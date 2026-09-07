@@ -1,111 +1,71 @@
 <h1 align="center">Gander</h1>
 
-<p align="center"><strong>Omni Interaction Agent</strong></p>
-<p align="center">Continuous audio-visual interaction and long-running agent work in one system.</p>
-
-<!-- Replace the three #resources targets with public URLs when they are released. -->
 <p align="center">
-  <a href="docs/gander-technical-report.pdf"><img src="https://img.shields.io/badge/Paper-PDF-C62828?style=for-the-badge" alt="Paper PDF"></a>
-  <a href="#resources"><img src="https://img.shields.io/badge/Demo-Coming_Soon-2563EB?style=for-the-badge" alt="Demo coming soon"></a>
-  <a href="#resources"><img src="https://img.shields.io/badge/Dataset-Coming_Soon-059669?style=for-the-badge" alt="Dataset coming soon"></a>
-  <a href="#resources"><img src="https://img.shields.io/badge/Model-Coming_Soon-D97706?style=for-the-badge" alt="Model coming soon"></a>
+  <strong>Omni Interaction Agent</strong><br>
+  <sub>Continuous audio-visual interaction and long-running agent work in one system.</sub>
 </p>
 
+<!-- Replace the remaining #resources targets when the public pages are released. -->
 <p align="center">
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#training">Training</a> ·
-  <a href="#offline-inference">Offline Inference</a>
+  <a href="docs/gander-technical-report.pdf"><img src="https://img.shields.io/badge/Paper-PDF-C62828?style=flat-square" alt="Paper PDF"></a>
+  <a href="#resources"><img src="https://img.shields.io/badge/Demo-Coming_Soon-2563EB?style=flat-square" alt="Demo coming soon"></a>
+  <a href="#resources"><img src="https://img.shields.io/badge/Dataset-Coming_Soon-059669?style=flat-square" alt="Dataset coming soon"></a>
+  <a href="https://huggingface.co/Gander-Omni/Gander"><img src="https://img.shields.io/badge/Model-Hugging_Face-D97706?style=flat-square" alt="Gander model on Hugging Face"></a>
 </p>
 
 <p align="center">
   <img src="docs/assets/gander-capabilities.png" alt="Gander capabilities across live audio-visual interaction and agentic tasks" width="100%">
 </p>
 
-**Talk while it works. Interrupt it, redirect it, or show it what you see.**
-Gander combines a realtime audio-visual Cerebellum, an asynchronous agent Brain,
-and a runtime that keeps both sides synchronized.
+<p align="center">
+  <strong>Talk while it works.</strong><br>
+  Interrupt it, redirect it, or show it what you see without stopping the task.
+</p>
 
-## Quick Start
+<p align="center">
+  <a href="#overview">Overview</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#training">Training</a> ·
+  <a href="#offline-inference">Offline Inference</a>
+</p>
 
-### 1. Prepare the environment and weights
+---
 
-```bash
-conda env create -f environment.yml
-conda activate gander
-```
+## Overview
 
-Place these assets on the machine:
+Gander is a full-duplex audio-visual agent for conversations that continue while
+real work is being done. A low-latency **Cerebellum** keeps listening, watching,
+speaking, and reacting; an asynchronous, tool-using **Brain** handles longer
+tasks. The runtime joins them into one interaction rather than making the user
+choose between a voice assistant and an agent.
 
-| Asset | Used by |
-| --- | --- |
-| MiniCPM-o 4.5 base model, including `assets/token2wav/` and `assets/system_ref_audio.wav` | Thinker, Talker, waveform decoder |
-| Gander Thinker checkpoint | Realtime perception, control, text, and tool calls |
-| Matching Gander Talker checkpoint | Streaming speech generation |
-| `faster-whisper-large-v3` model | Managed browser ASR |
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <p align="center"><strong>Realtime Cerebellum</strong></p>
+      <p>Streams live audio and video, handles overlap and interruption, and stays responsive to the scene as it changes.</p>
+    </td>
+    <td width="33%" valign="top">
+      <p align="center"><strong>Tool-using Brain</strong></p>
+      <p>Runs longer tasks asynchronously while conversation, follow-ups, and redirection remain available.</p>
+    </td>
+    <td width="34%" valign="top">
+      <p align="center"><strong>Coordinated Runtime</strong></p>
+      <p>Keeps context, milestones, questions, permissions, cancellation, and final delivery attached to the right task.</p>
+    </td>
+  </tr>
+</table>
 
-The configured Codex-compatible command must already be authenticated and support
-`app-server --stdio`; no separate Brain service is required.
-
-### 2. Create a local serving profile
-
-```bash
-cp gander_runtime/configs/serve.example.yaml \
-  gander_runtime/configs/serve.local.yaml
-mkdir -p workspace
-```
-
-Edit `gander_runtime/configs/serve.local.yaml`:
-
-| Setting | Value |
-| --- | --- |
-| `model.model_name_or_path`, `model.processor_name_or_path` | MiniCPM-o 4.5 directory |
-| `model.token2wav_dir` | `<base-model>/assets/token2wav` |
-| `duplex.checkpoint` | Thinker checkpoint |
-| `duplex.talker_checkpoint` | Matching Talker checkpoint |
-| `duplex.ref_audio_path` | Reference voice WAV; the base model sample works |
-| `asr.model_path` | Local faster-whisper model directory |
-| `worker.settings.codex_bin` | `codex` or an absolute executable path |
-| `worker.settings.codex_home` | Keep `null` for standard Codex; set the authenticated home for a wrapper |
-| `worker.settings.model` | Keep `null` to use the CLI default, or set a supported model |
-| `server.host` | Keep `127.0.0.1` for local or reverse-proxied deployment |
-| `server.port` | Browser service port; the example uses `8000` |
-
-The example is a three-GPU deployment:
-
-| Physical GPU | Process setting |
-| --- | --- |
-| GPU 0: Thinker | `server.cuda_visible_devices: "0,1"`, logical `cuda:0` |
-| GPU 1: Talker | `duplex.detached_talker_device: cuda:1` |
-| GPU 2: ASR | `asr.cuda_visible_devices: "2"`, `device_index: 0` |
-
-### 3. Validate and start
-
-```bash
-./scripts/serve.sh gander_runtime/configs/serve.local.yaml --check-config
-./scripts/serve.sh gander_runtime/configs/serve.local.yaml
-```
-
-Open `http://127.0.0.1:8000`; verify the service with:
-
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-For remote access, keep Gander on loopback and put an authenticated HTTPS reverse
-proxy in front of it. Proxy both HTTP and WebSocket routes. HTTPS is required for
-normal browser microphone, camera, and screen permissions; do not expose the
-Codex-backed runtime directly to an untrusted network.
-
-The single command starts managed ASR, the Thinker, detached Talker, WebSocket
-runtime, browser UI, and Codex-backed Brain. Camera/screen input,
-`context_slate`, streamed speech, task progress, questions, permissions,
-interrupt, stop, reset, and clear are enabled by the example profile.
+The repository contains the complete path from multimodal training and detached
+Thinker-Talker inference to the browser runtime and provider-neutral Brain
+integration.
 
 ## Architecture
 
 <p align="center">
-  <img src="docs/assets/brain-cerebellum-runtime.png" alt="Gander Brain-Cerebellum architecture" width="100%">
+  <img src="docs/assets/brain-cerebellum-runtime.png" alt="Gander Brain-Cerebellum architecture" width="96%"><br>
+  <sub>The Cerebellum owns the realtime loop; the Brain owns long-horizon work; the runtime keeps them synchronized.</sub>
 </p>
 
 Gander separates work by latency and responsibility:
@@ -154,10 +114,41 @@ read-only side branch without blocking or modifying the main task. Cancellation,
 superseded generations, permissions, and final delivery remain enforced by the
 runtime rather than by prompt convention.
 
+## Quick Start
+
+Download the Thinker and matching Talker checkpoints from
+[Gander-Omni/Gander](https://huggingface.co/Gander-Omni/Gander). You also need the
+MiniCPM-o 4.5 base model, a local `faster-whisper-large-v3` model, and an
+authenticated Codex-compatible command.
+
+```bash
+conda env create -f environment.yml
+conda activate gander
+
+cp gander_runtime/configs/serve.example.yaml \
+  gander_runtime/configs/serve.local.yaml
+mkdir -p workspace
+```
+
+In `serve.local.yaml`, set the base-model paths under `model`, the Thinker and
+Talker paths under `duplex`, `asr.model_path`, and
+`worker.settings.codex_bin`. The example assigns Thinker, Talker, and ASR to
+physical GPUs 0, 1, and 2 respectively and enables video, streaming speech,
+`context_slate`, and the full Brain tool profile.
+
+```bash
+./scripts/serve.sh gander_runtime/configs/serve.local.yaml --check-config
+./scripts/serve.sh gander_runtime/configs/serve.local.yaml
+```
+
+Open `http://127.0.0.1:8000`. For a remote browser, proxy the HTTP and WebSocket
+routes through HTTPS while keeping the service bound to loopback.
+
 ## Streaming Thinker-Talker
 
 <p align="center">
-  <img src="docs/assets/streaming-thinker-talker.png" alt="Streaming Thinker-Talker architecture" width="100%">
+  <img src="docs/assets/streaming-thinker-talker.png" alt="Streaming Thinker-Talker architecture" width="96%"><br>
+  <sub>A streaming Thinker decides when and what to say; a detached Talker renders speech without blocking perception.</sub>
 </p>
 
 The Cerebellum starts from MiniCPM-o 4.5 and organizes continuous interaction into
@@ -188,7 +179,8 @@ slate, or a task slate plus summarized memory episodes.
 ## Agent Task Lifecycle
 
 <p align="center">
-  <img src="docs/assets/agent-task-lifecycle.png" alt="A live task being delegated, revised, fenced, and delivered" width="100%">
+  <img src="docs/assets/agent-task-lifecycle.png" alt="A live task being delegated, revised, fenced, and delivered" width="96%"><br>
+  <sub>Tasks remain steerable while execution generations keep superseded work from leaking into the final answer.</sub>
 </p>
 
 The Cerebellum exposes only three task operations:
@@ -214,7 +206,8 @@ without losing control of background work.
 ## Data Design
 
 <p align="center">
-  <img src="docs/assets/agent-data-pipeline.png" alt="Gander audio-agent and omni-agent data construction pipelines" width="100%">
+  <img src="docs/assets/agent-data-pipeline.png" alt="Gander audio-agent and omni-agent data construction pipelines" width="96%"><br>
+  <sub>Training examples preserve the same causal timeline and interaction lifecycle used by the deployed system.</sub>
 </p>
 
 Gander is trained on a 2.7M-example mixture organized around behavior rather than
@@ -377,4 +370,4 @@ inherited by the worker.
 | Paper | [Omni Interaction Agent Technical Report](docs/gander-technical-report.pdf) |
 | Demo | Coming soon |
 | Dataset | Coming soon |
-| Model | Coming soon |
+| Model | [Gander-Omni/Gander](https://huggingface.co/Gander-Omni/Gander) |
