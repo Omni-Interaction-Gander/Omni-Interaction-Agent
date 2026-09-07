@@ -1,0 +1,72 @@
+model:
+  model_name_or_path: /path/to/MiniCPM-o-4_5
+  processor_name_or_path: /path/to/MiniCPM-o-4_5
+  trust_remote_code: true
+  torch_dtype: bfloat16
+  attn_implementation: sdpa
+  init_vision: true
+  init_audio: true
+  init_tts: false
+  token2wav_dir: null
+  low_cpu_mem_usage: true
+  device_map: cuda
+
+inference:
+  mode: turn
+  checkpoint: /path/to/gander-checkpoint
+  talker_checkpoint: null
+  generate_audio: false
+  output_audio: null
+  enable_thinking: false
+  omni_mode: false
+  sys_mode: audio_assistant
+  language: zh
+  strict_checkpoint: false
+  input:
+    text: 你好，请简要介绍你自己。
+    audio: null
+    image: null
+    ref_audio: null
+  generation:
+    max_new_tokens: 512
+    min_new_tokens: 0
+    do_sample: true
+    temperature: 0.7
+    top_p: 0.8
+    top_k: 100
+    repetition_penalty: 1.02
+    max_inp_length: 8192
+    max_slice_nums: 1
+  duplex:
+    tools_path: null
+    enable_task_tools: false
+    trailing_silence_sec: 20.0
+    stop_on_turn_end: true
+    chunk_ms: 1000
+    first_chunk_ms: 1035
+    ls_mode: explicit
+    speak_text_tokens_per_unit: 4
+    max_new_speak_tokens_per_chunk: null
+    max_new_tool_tokens: 96
+    max_tool_response_tokens: 256
+    max_tool_calls_per_unit: 4
+    max_tool_schemas: 6
+    max_tool_schema_tokens: 1024
+    inject_search_time_context: false
+    decode_mode: sampling
+    n_timesteps: 10
+    temperature: 0.7
+    top_p: 0.8
+    top_k: 20
+    sliding_window_mode: context_no_previous
+    basic_window_high_tokens: 8000
+    basic_window_low_tokens: 6000
+    context_previous_max_tokens: 0
+    context_max_units: 128
+    memory_slate_max_tokens: 256
+    memory_lead_ratio: 0.7
+    memory_soft_ratio: 0.9
+    memory_hard_ratio: 1.0
+    memory_kv_ceiling_units: null
+    talker_speech_tokens_per_unit: 25
+    talker_final_speech_tokens_max: 0

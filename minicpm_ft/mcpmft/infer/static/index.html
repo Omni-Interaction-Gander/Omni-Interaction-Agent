@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Omni-Interaction-Agent</title>
+  <link rel="stylesheet" href="assets/app.css?v=20260818-1">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">O</span>
+        <span class="brand-copy">
+          <strong>Omni-Interaction-Agent</strong>
+          <small>Duplex console</small>
+        </span>
+      </div>
+      <div class="connection-state" id="connectionState" data-state="idle">
+        <span class="state-dot" aria-hidden="true"></span>
+        <span id="status">Idle</span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel control-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Live input</span>
+            <h2>Microphone</h2>
+          </div>
+          <time id="sessionTimer">00:00</time>
+        </div>
+
+        <canvas id="waveform" width="440" height="112" aria-label="Live microphone waveform"></canvas>
+
+        <div class="meter-row">
+          <div class="meter" aria-hidden="true"><span id="meter"></span></div>
+          <output id="inputLevel">-120 dB</output>
+        </div>
+
+        <button
+          id="startBtn"
+          class="primary-command"
+          type="button"
+          data-help="请求一个模型会话并开始发送麦克风音频；当前模型实例一次处理一个会话。"
+        >Start session</button>
+        <div class="command-grid">
+          <button
+            id="stopBtn"
+            class="secondary-command"
+            type="button"
+            data-help="结束当前会话，等待模型完成尾部输出，然后释放模型名额。"
+            disabled
+          >Stop</button>
+          <button
+            id="resetBtn"
+            class="secondary-command"
+            type="button"
+            data-help="归档当前对话并清空模型上下文；麦克风和模型名额保持不变。"
+            disabled
+          >Reset</button>
+        </div>
+
+        <label class="range-control" title="Audio below this level is sent to the model as digital silence and ignored by transcription">
+          <span>
+            <span>Noise gate</span>
+            <output id="gateValue">-46 dB</output>
+          </span>
+          <input id="gateSlider" type="range" min="-60" max="-24" step="1" value="-46">
+        </label>
+
+        <label class="select-control">
+          <span>ASR language</span>
+          <select id="languageSelect">
+            <option value="">Auto</option>
+            <option value="zh">Chinese</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+
+        <label class="select-control" id="videoModeControl" hidden>
+          <span>Video input</span>
+          <select id="videoModeSelect">
+            <option value="">Audio only</option>
+            <option value="camera">Camera</option>
+            <option value="screen">Screen (experimental)</option>
+          </select>
+        </label>
+        <div class="video-preview" id="videoPreviewWrap" hidden>
+          <canvas id="videoPreview" aria-label="Frames as the frontbrain receives them"></canvas>
+          <p class="video-note" id="videoNote">--</p>
+        </div>
+        <video id="videoSource" muted playsinline hidden></video>
+
+        <div class="service-statuses">
+          <div><span>Transport</span><strong id="transportValue">--</strong></div>
+          <div><span>Transcription</span><strong id="asrStatus" data-state="idle">Checking</strong></div>
+        </div>
+      </aside>
+
+      <section class="panel transcript-panel">
+        <div class="panel-heading transcript-heading">
+          <div>
+            <span class="eyebrow">Session timeline</span>
+            <h2>Conversation</h2>
+          </div>
+          <div class="heading-actions">
+            <button
+              id="historyBtn"
+              class="quiet-command"
+              type="button"
+              data-help="查看保存在当前浏览器中的过往对话；记录不会同步到其他设备。"
+              disabled
+            >
+              History <span id="historyCount">0</span>
+            </button>
+            <button
+              id="clearBtn"
+              class="quiet-command"
+              type="button"
+              data-help="仅清空当前页面中的对话显示，不会清除模型上下文或历史归档。"
+            >Clear</button>
+          </div>
+        </div>
+
+        <div class="transcript" id="transcript" aria-live="polite">
+          <div class="empty-state" id="emptyState">
+            <span class="empty-line" aria-hidden="true"></span>
+            <strong>Ready for a session</strong>
+          </div>
+        </div>
+
+        <div class="live-caption">
+          <span>Latest transcript</span>
+          <p id="liveCaption">--</p>
+        </div>
+      </section>
+
+      <aside class="panel inspector-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Runtime</span>
+            <h2>Signals</h2>
+          </div>
+        </div>
+
+        <dl class="signal-list">
+          <div><dt>Mic timeline</dt><dd id="micTimelineState">0.0 s</dd></div>
+          <div><dt>Model chunks</dt><dd id="chunkCount">0</dd></div>
+          <div><dt>Model lag</dt><dd id="modelLagState">0.0 s</dd></div>
+          <div><dt>Model state</dt><dd id="modelState">Idle</dd></div>
+          <div><dt>ASR turns</dt><dd id="asrTurnCount">0</dd></div>
+          <div><dt>Video</dt><dd id="videoState">Off</dd></div>
+          <div><dt>KV context</dt><dd id="contextState">0 / 128</dd></div>
+          <div><dt>Output audio</dt><dd id="outputAudioState">Ready</dd></div>
+        </dl>
+
+        <div class="event-section">
+          <div class="section-label">Events</div>
+          <div class="event-log" id="eventLog" aria-live="polite"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <dialog id="historyDialog" class="history-dialog">
+    <div class="history-shell">
+      <header class="history-header">
+        <div>
+          <span class="eyebrow">Saved locally</span>
+          <h2>Past conversations</h2>
+        </div>
+        <button
+          id="closeHistoryBtn"
+          class="quiet-command"
+          type="button"
+          data-help="关闭历史窗口并返回实时对话，已保存的记录不会删除。"
+        >Close</button>
+      </header>
+      <div id="historyList" class="history-list"></div>
+      <footer class="history-footer">
+        <button
+          id="clearHistoryBtn"
+          class="quiet-command danger-command"
+          type="button"
+          data-help="永久删除当前浏览器保存的全部历史对话，不影响正在运行的模型会话。"
+        >
+          Clear history
+        </button>
+      </footer>
+    </div>
+  </dialog>
+
+  <script src="assets/video.js?v=20260818-1" defer></script>
+  <script src="assets/app.js?v=20260907-2" defer></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gander-runtime"
+version = "1.0.0"
+description = "Realtime Gander runtime with native task tools and pluggable workers."
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "mcpmft>=1.0.0",
+  "pillow>=10",
+  "pyyaml>=6",
+  "uvicorn[standard]>=0.29",
+  "websockets>=12",
+]
+
+[project.scripts]
+gander-serve = "gander_runtime.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gander_runtime*"]

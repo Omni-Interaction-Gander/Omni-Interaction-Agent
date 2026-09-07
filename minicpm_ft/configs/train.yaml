@@ -1,0 +1,314 @@
+model:
+  model_name_or_path: /path/to/MiniCPM-o-4_5
+  processor_name_or_path: /path/to/MiniCPM-o-4_5
+  trust_remote_code: true
+  torch_dtype: bfloat16
+  attn_implementation: sdpa
+  init_vision: true
+  init_audio: true
+  init_tts: false
+  token2wav_dir: null
+  low_cpu_mem_usage: true
+  device_map: null
+
+audio:
+  sample_rate: 16000
+  audio_chunk_length: 1
+  whisper_hop_length: 160
+  audio_pool_step: 5
+
+audio_augment:
+  enabled: false
+
+talker:
+  tts_proj_layer: -1
+  codes_per_text_token: 6
+  audio_eos_id: 6561
+  audio_bos_id: 151687
+  detach_llm_for_tts: auto
+  turn_gap_ms: 2000
+  max_talker_tokens: 4096
+
+freeze:
+  tune_vision: false
+  tune_resampler: false
+  tune_audio_encoder: false
+  tune_audio_proj: true
+  tune_llm: true
+  tune_tts_proj: false
+  tune_tts_decoder: false
+
+path:
+  paradigm: frontbrain
+  enable_s2t: true
+  enable_t2s: false
+  enable_vision: true
+  enable_omniflow: true
+
+data:
+  # Makes the base recipe runnable with the compact release examples. A dataset
+  # train_config.yaml overrides this root with its own location.
+  release_root: ../examples/release
+  manifest_paths: []
+  manifest_row_counts: []
+  manifest_sample_counts: []
+  manifest_mix_strategy: smooth
+  manifest_mix_weights: []
+  frontbrain_tool_protocol: task_tools_v1
+  frontbrain_omni_manifest_paths: []
+  frontbrain_tool_manifest_paths: []
+  frontbrain_require_vision_source: false
+  frontbrain_required_task_calls:
+    - task_start
+    - task_send
+    - task_resolve
+  frontbrain_business_tool_catalog_path: null
+  frontbrain_business_tool_augmentation_probability: 0.0
+  frontbrain_business_tool_augmentation_min: 1
+  frontbrain_business_tool_augmentation_max: 3
+  frontbrain_max_tools_per_sample: 6
+  frontbrain_max_tool_schema_tokens: 1024
+  frontbrain_use_sample_pinned_context: true
+  frontbrain_pinned_context_requires_marker: true
+  shuffle: true
+  shuffle_block_bytes: 262144
+  public_video_root: null
+  s3_cache_dir: null
+  max_seq_length: 16384
+  strict_no_truncation: true
+  max_audio_seconds: null
+  kv_delete_mask: true
+  kv_keep_previous_units: 128
+  sliding_window_training: context_memory
+  context_training_semantics: all_unit_4d_mask_v1
+  context_max_units: 128
+  context_previous_max_tokens: 1500
+  duplex_text_tokens_per_unit: 8
+  duplex_speech_tokens_per_unit: 50
+  idle_gap_augmentation: false
+  include_duplex_system_prompt: true
+  seed: 42
+
+train:
+  # Change only this value to select the coherent Thinker, Talker, or joint recipe below.
+  mode: thinker
+  output_dir: outputs/gander
+  deepspeed: configs/deepspeed/zero2.json
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  num_train_epochs: 1.0
+  max_steps: -1
+  learning_rate: 2.0e-6
+  projector_learning_rate: 1.0e-5
+  tts_learning_rate: null
+  lr_scheduler_type: linear
+  weight_decay: 0.0
+  warmup_ratio: 0.03
+  max_grad_norm: 1.0
+  logging_steps: 10
+  save_steps: 2000
+  save_total_limit: 2
+  bf16: true
+  gradient_checkpointing: true
+  text_loss_weight: 1.0
+  audio_loss_weight: 0.0
+  control_loss_weight: 1.5
+  save_trainable_only: true
+  dataloader_num_workers: 0
+  ddp_find_unused_parameters: false
+  report_to: null
+
+runtime:
+  init_checkpoint: null
+  init_checkpoint_prefixes: []
+  resume_from_checkpoint: null
+  dry_run: false
+  skip_final_save: false
+
+# Mode entries contain only fields that must change together. Values here override the common
+# configuration above; dotted command-line overrides are applied last.
+train_modes:
+  thinker:
+    model:
+      init_vision: true
+      init_tts: false
+    talker:
+      detach_llm_for_tts: auto
+    freeze:
+      tune_audio_proj: true
+      tune_llm: true
+      tune_tts_proj: false
+      tune_tts_decoder: false
+    path:
+      enable_t2s: false
+      enable_vision: true
+    data:
+      manifest_paths:
+        - thinker/manifests/video_understanding.train.jsonl
+        - thinker/manifests/interaction_speech.train.jsonl
+        - thinker/manifests/spoken_qa.train.jsonl
+        - thinker/manifests/full_duplex.train.jsonl
+        - thinker/manifests/agent_runtime.train.jsonl
+        - thinker/manifests/irrelevant_video.train.jsonl
+        - thinker/manifests/task_slate.train.jsonl
+        - thinker/manifests/gui_agent.train.jsonl
+        - thinker/manifests/speech_translation.train.jsonl
+        - thinker/manifests/tool_reasoning.train.jsonl
+      manifest_row_counts: [1, 2, 1, 1, 2, 1, 1, 1, 1, 1]
+      frontbrain_omni_manifest_paths:
+        - thinker/manifests/video_understanding.train.jsonl
+        - thinker/manifests/irrelevant_video.train.jsonl
+      frontbrain_tool_manifest_paths:
+        - thinker/manifests/agent_runtime.train.jsonl
+        - thinker/manifests/task_slate.train.jsonl
+        - thinker/manifests/gui_agent.train.jsonl
+        - thinker/manifests/tool_reasoning.train.jsonl
+      frontbrain_require_vision_source: true
+      s3_cache_dir: null
+    train:
+      output_dir: outputs/thinker
+      num_train_epochs: 1.0
+      learning_rate: 2.0e-6
+      projector_learning_rate: 1.0e-5
+      tts_learning_rate: null
+      weight_decay: 0.0
+      gradient_checkpointing: true
+      text_loss_weight: 1.0
+      audio_loss_weight: 0.0
+      control_loss_weight: 1.5
+      save_steps: 2000
+      save_total_limit: 2
+      dataloader_num_workers: 0
+    runtime:
+      init_checkpoint: null
+      init_checkpoint_prefixes: []
+      resume_from_checkpoint: null
+
+  talker:
+    model:
+      init_vision: false
+      init_tts: true
+    talker:
+      detach_llm_for_tts: always
+    freeze:
+      tune_audio_proj: false
+      tune_llm: false
+      tune_tts_proj: true
+      tune_tts_decoder: true
+    path:
+      enable_t2s: true
+      enable_vision: false
+    data:
+      manifest_paths:
+        - talker/manifests/spoken_qa.talker.train.jsonl
+        - talker/manifests/full_duplex.talker.train.jsonl
+        - talker/manifests/agent_runtime.talker.train.jsonl
+        - talker/manifests/irrelevant_video.talker.train.jsonl
+        - talker/manifests/task_slate.talker.train.jsonl
+      manifest_row_counts: [1, 1, 2, 1, 1]
+      frontbrain_tool_manifest_paths:
+        - talker/manifests/spoken_qa.talker.train.jsonl
+        - talker/manifests/full_duplex.talker.train.jsonl
+        - talker/manifests/agent_runtime.talker.train.jsonl
+        - talker/manifests/irrelevant_video.talker.train.jsonl
+        - talker/manifests/task_slate.talker.train.jsonl
+      # The compact examples embed real v63 S3 targets. Production releases use a cache.
+      s3_cache_dir: null
+    train:
+      output_dir: outputs/talker
+      num_train_epochs: 2.0
+      learning_rate: 2.0e-5
+      projector_learning_rate: 2.0e-5
+      tts_learning_rate: 2.0e-5
+      weight_decay: 0.01
+      gradient_checkpointing: false
+      text_loss_weight: 0.0
+      audio_loss_weight: 1.0
+      control_loss_weight: 0.0
+      save_steps: 1000
+      save_total_limit: 3
+      dataloader_num_workers: 1
+    runtime:
+      # Talker checkpoints contain only TTS tensors, so always compose the frozen Thinker first.
+      init_checkpoint: /path/to/thinker-checkpoint
+      init_checkpoint_prefixes:
+        - llm.
+        - audio_projection_layer.
+      resume_from_checkpoint: null
+
+  joint:
+    model:
+      init_vision: true
+      init_tts: true
+    talker:
+      detach_llm_for_tts: auto
+    freeze:
+      tune_audio_proj: true
+      tune_llm: true
+      tune_tts_proj: true
+      tune_tts_decoder: true
+    path:
+      enable_t2s: true
+      enable_vision: true
+    data:
+      manifest_paths:
+        - thinker/manifests/video_understanding.train.jsonl
+        - thinker/manifests/interaction_speech.train.jsonl
+        - talker/manifests/spoken_qa.talker.train.jsonl
+        - talker/manifests/full_duplex.talker.train.jsonl
+        - talker/manifests/agent_runtime.talker.train.jsonl
+        - talker/manifests/irrelevant_video.talker.train.jsonl
+        - talker/manifests/task_slate.talker.train.jsonl
+        - thinker/manifests/gui_agent.train.jsonl
+        - thinker/manifests/speech_translation.train.jsonl
+        - thinker/manifests/tool_reasoning.train.jsonl
+      manifest_row_counts: [1, 2, 1, 1, 2, 1, 1, 1, 1, 1]
+      frontbrain_omni_manifest_paths:
+        - thinker/manifests/video_understanding.train.jsonl
+        - talker/manifests/irrelevant_video.talker.train.jsonl
+      frontbrain_tool_manifest_paths:
+        - talker/manifests/agent_runtime.talker.train.jsonl
+        - talker/manifests/task_slate.talker.train.jsonl
+        - thinker/manifests/gui_agent.train.jsonl
+        - thinker/manifests/tool_reasoning.train.jsonl
+      frontbrain_require_vision_source: true
+      s3_cache_dir: null
+    train:
+      output_dir: outputs/joint
+      num_train_epochs: 1.0
+      learning_rate: 2.0e-6
+      projector_learning_rate: 1.0e-5
+      tts_learning_rate: 1.0e-5
+      weight_decay: 0.01
+      gradient_checkpointing: true
+      text_loss_weight: 1.0
+      audio_loss_weight: 1.0
+      control_loss_weight: 1.5
+      save_steps: 1000
+      save_total_limit: 2
+      dataloader_num_workers: 0
+    runtime:
+      init_checkpoint: null
+      init_checkpoint_prefixes: []
+      resume_from_checkpoint: null
+
+launch:
+  hosts:
+    - localhost
+  hostfile: null
+  ssh_user: root
+  gpus_per_node: 8
+  master_addr: ""
+  master_port: 29500
+  python: python
+  project_dir: ""
+  log_dir: outputs/launcher
+  local_cache_dir: /tmp/gander
+  nccl_socket_ifname: null
+  nccl_ib_disable: false
+  omp_num_threads: 8
+  ssh_options:
+    - -o
+    - BatchMode=yes
+    - -o
+    - StrictHostKeyChecking=no

@@ -1,0 +1,83 @@
+model:
+  model_name_or_path: /path/to/MiniCPM-o-4_5
+  processor_name_or_path: /path/to/MiniCPM-o-4_5
+  trust_remote_code: true
+  torch_dtype: bfloat16
+  attn_implementation: sdpa
+  init_vision: true
+  init_audio: true
+  init_tts: true
+  token2wav_dir: /path/to/MiniCPM-o-4_5/assets/token2wav
+  token2wav_n_timesteps: 10
+  token2wav_enable_float16: false
+  low_cpu_mem_usage: true
+  device_map: cuda
+
+server:
+  host: 127.0.0.1
+  port: 8000
+  runtime_dir: var/gander
+  ledger_dir: /tmp/gander/gateway
+  mode: lean
+  log_level: info
+  cuda_visible_devices: "0,1"
+
+asr:
+  mode: managed
+  model_path: /path/to/faster-whisper-large-v3
+  host: 127.0.0.1
+  port: 8995
+  cuda_visible_devices: "2"
+  device: cuda
+  device_index: 0
+  compute_type: float16
+  beam_size: 3
+  startup_timeout_sec: 900.0
+  request_timeout_sec: 120.0
+
+duplex:
+  checkpoint: /path/to/gander-thinker-checkpoint
+  talker_checkpoint: /path/to/gander-talker-checkpoint
+  detached_talker_device: cuda:1
+  talker_emit_speech_tokens: 25
+  generate_audio: true
+  decode_mode: sampling
+  ref_audio_path: /path/to/MiniCPM-o-4_5/assets/system_ref_audio.wav
+  trailing_silence_sec: 60.0
+  turn_bind_grace_sec: 5.0
+  media_mode: voice
+  allow_client_video: true
+  client_video_mode: omni
+  client_video_sources:
+    - camera
+    - screen
+  vision_max_slice_nums: 1
+  vision_batch_feed: false
+  codex_frame_rate_multiplier: 3.0
+  codex_screen_history_seconds: 8.0
+  sliding_window_mode: context_slate
+  expose_task_slate_to_model: true
+  speak_text_tokens_per_unit: 8
+  talker_speech_tokens_per_unit: 50
+  max_new_speak_tokens_per_chunk: 11
+  max_new_tool_tokens: 256
+  max_tool_response_tokens: 256
+  context_max_units: 128
+  context_previous_max_tokens: 1500
+  memory_slate_max_tokens: 256
+  temperature: 0.7
+  top_p: 0.8
+  top_k: 20
+  warm_first_unit: true
+
+worker:
+  provider: codex
+  cwd: ../workspace
+  profile: full
+  settings:
+    codex_bin: codex
+    model: null
+    reasoning_effort: medium
+    codex_home: null
+    sandbox: workspace-write
+    approval_policy: on-request

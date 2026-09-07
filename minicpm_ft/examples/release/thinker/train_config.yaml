@@ -1,0 +1,45 @@
+train:
+  mode: thinker
+
+audio_augment:
+  enabled: false
+
+data:
+  release_root: ..
+  manifest_paths:
+    - thinker/manifests/video_understanding.train.jsonl
+    - thinker/manifests/interaction_speech.train.jsonl
+    - thinker/manifests/spoken_qa.train.jsonl
+    - thinker/manifests/full_duplex.train.jsonl
+    - thinker/manifests/agent_runtime.train.jsonl
+    - thinker/manifests/irrelevant_video.train.jsonl
+    - thinker/manifests/task_slate.train.jsonl
+    - thinker/manifests/gui_agent.train.jsonl
+    - thinker/manifests/speech_translation.train.jsonl
+    - thinker/manifests/tool_reasoning.train.jsonl
+  manifest_row_counts: [1, 2, 1, 1, 2, 1, 1, 1, 1, 1]
+  manifest_sample_counts: []
+  manifest_mix_strategy: smooth
+  manifest_mix_weights: []
+  frontbrain_omni_manifest_paths:
+    - thinker/manifests/video_understanding.train.jsonl
+    - thinker/manifests/irrelevant_video.train.jsonl
+  frontbrain_tool_manifest_paths:
+    - thinker/manifests/agent_runtime.train.jsonl
+    - thinker/manifests/task_slate.train.jsonl
+    - thinker/manifests/gui_agent.train.jsonl
+    - thinker/manifests/tool_reasoning.train.jsonl
+  frontbrain_require_vision_source: true
+  frontbrain_business_tool_catalog_path: null
+  frontbrain_business_tool_augmentation_probability: 0.0
+  frontbrain_use_sample_pinned_context: true
+  frontbrain_pinned_context_requires_marker: true
+  public_video_root: null
+  s3_cache_dir: null
+  duplex_text_tokens_per_unit: 8
+  duplex_speech_tokens_per_unit: 50
+  sliding_window_training: context_memory
+  context_training_semantics: all_unit_4d_mask_v1
+  context_max_units: 128
+  context_previous_max_tokens: 1500
+  shuffle: false

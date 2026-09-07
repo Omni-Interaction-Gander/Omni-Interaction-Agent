@@ -1,0 +1,26 @@
+name: gander
+channels:
+  - conda-forge
+  - nodefaults
+
+dependencies:
+  - python=3.10
+  - pip>=24
+  - setuptools>=68,<81
+  - wheel
+  - pip:
+      # CUDA 12.4 stack used by the verified training and serving environment.
+      - torch==2.6.0
+      - torchvision==0.21.0
+      - torchaudio==2.6.0
+
+      # MiniCPM-o processor and the built-in TensorBoard reporting option.
+      - sentencepiece==0.2.1
+      - tensorboard==2.20.0
+
+      # Token2wav and S3 tokenizer used by Talker training and waveform generation.
+      - minicpmo-utils[tts]==1.0.6
+
+      # Install both release components and all of their declared dependencies.
+      - -e ./minicpm_ft[talker,asr]
+      - -e ./gander_runtime

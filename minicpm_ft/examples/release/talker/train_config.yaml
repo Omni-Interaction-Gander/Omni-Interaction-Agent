@@ -1,0 +1,40 @@
+train:
+  mode: talker
+
+audio_augment:
+  enabled: false
+
+data:
+  release_root: ..
+  manifest_paths:
+    - talker/manifests/spoken_qa.talker.train.jsonl
+    - talker/manifests/full_duplex.talker.train.jsonl
+    - talker/manifests/agent_runtime.talker.train.jsonl
+    - talker/manifests/irrelevant_video.talker.train.jsonl
+    - talker/manifests/task_slate.talker.train.jsonl
+  manifest_row_counts: [1, 1, 2, 1, 1]
+  manifest_sample_counts: []
+  manifest_mix_strategy: smooth
+  manifest_mix_weights: []
+  frontbrain_omni_manifest_paths: []
+  frontbrain_tool_manifest_paths:
+    - talker/manifests/spoken_qa.talker.train.jsonl
+    - talker/manifests/full_duplex.talker.train.jsonl
+    - talker/manifests/agent_runtime.talker.train.jsonl
+    - talker/manifests/irrelevant_video.talker.train.jsonl
+    - talker/manifests/task_slate.talker.train.jsonl
+  frontbrain_require_vision_source: false
+  frontbrain_business_tool_catalog_path: null
+  frontbrain_business_tool_augmentation_probability: 0.0
+  frontbrain_use_sample_pinned_context: true
+  frontbrain_pinned_context_requires_marker: true
+  public_video_root: null
+  # The compact examples carry their real v63 S3 targets inline.
+  s3_cache_dir: null
+  duplex_text_tokens_per_unit: 8
+  duplex_speech_tokens_per_unit: 50
+  sliding_window_training: context_memory
+  context_training_semantics: all_unit_4d_mask_v1
+  context_max_units: 128
+  context_previous_max_tokens: 1500
+  shuffle: false
