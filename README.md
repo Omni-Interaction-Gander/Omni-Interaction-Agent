@@ -91,22 +91,16 @@ responsibilities:
 1. The browser streams audio and optional camera or screen frames. Source
    timestamps keep visual evidence aligned with the audio unit being processed.
 2. The Cerebellum consumes the latest causal unit and predicts an interaction
-   decision before generating text or a task operation.
-3. Simple conversational requests remain in the realtime model. Complex or
-   tool-dependent requests produce `task_start`, `task_send`, or `task_resolve`.
-4. The runtime binds that action to the finalized user turn, creates a tracked
-   execution, and gives the selected Brain a bounded task context rather than an
-   unstructured copy of the entire conversation.
-5. The Brain works asynchronously. Verified milestones, clarification questions,
-   and permission requests return through typed runtime events while the
-   Cerebellum continues to listen and converse.
-6. The runtime fences superseded executions and delivers only a valid result. The
-   Cerebellum then presents that result naturally in the ongoing spoken exchange.
+   decision. Simple requests stay local; complex work becomes `task_start`,
+   `task_send`, or `task_resolve`.
+3. The runtime binds the operation to the finalized user turn and starts a tracked
+   Brain execution with bounded text and visual context.
+4. The Brain works asynchronously while the Cerebellum remains available.
+   Milestones, questions, permissions, and the final result return through the
+   live interaction; superseded runs are fenced from delivery.
 
-The ASR service has a specific role in this path. The Cerebellum consumes raw
-audio directly; managed ASR provides browser transcripts and trusted textual task
-input for the Brain. This preserves end-to-end speech interaction at the front
-while giving a text-oriented worker a stable instruction channel.
+The Cerebellum consumes raw audio directly; managed ASR supplies the browser
+transcript and the trusted text instruction passed to the Brain.
 
 ### Back-Brain tools and providers
 
@@ -125,6 +119,79 @@ The included provider is Codex. Provider construction itself is registry-based:
 each implementation declares typed settings and capabilities, so another Brain
 can be integrated without changing the Cerebellum task protocol or gateway state
 machine.
+
+## Quick Start
+
+This starts the complete browser system: managed ASR, streaming Thinker,
+detached Talker, agent runtime, web UI, and Codex-backed Brain. For model-only
+evaluation, see [Offline Inference](#offline-inference).
+
+### 1. Prerequisites
+
+| Requirement | Notes |
+| --- | --- |
+| System | Linux, Conda, and an NVIDIA driver compatible with the CUDA 12.4 PyTorch stack. |
+| GPUs | The example uses three physical GPUs, one each for Thinker, Talker, and ASR. |
+| Models | [MiniCPM-o 4.5](https://huggingface.co/openbmb/MiniCPM-o-4_5), a Gander Thinker checkpoint, its matching Talker checkpoint, and faster-whisper large-v3. |
+| Brain | An authenticated Codex-compatible executable supporting `app-server --stdio`. |
+
+### 2. Install and download
+
+```bash
+git clone https://github.com/Omni-Interaction-Gander/Omni-Interaction-Agent.git
+cd Omni-Interaction-Agent
+
+conda env create -f environment.yml
+conda activate gander
+
+mkdir -p checkpoints
+hf download openbmb/MiniCPM-o-4_5 \
+  --local-dir checkpoints/MiniCPM-o-4_5
+hf download Gander-Omni/Gander \
+  --local-dir checkpoints/Gander
+hf download Systran/faster-whisper-large-v3 \
+  --local-dir checkpoints/faster-whisper-large-v3
+```
+
+Existing local model copies work as well. Use the matching Thinker and Talker
+pair identified on the [Gander model
+page](https://huggingface.co/Gander-Omni/Gander).
+
+### 3. Configure
+
+```bash
+cp gander_runtime/configs/serve.example.yaml \
+  gander_runtime/configs/serve.local.yaml
+mkdir -p workspace
+```
+
+Replace the path placeholders in `serve.local.yaml`:
+
+| Asset | Configuration fields |
+| --- | --- |
+| MiniCPM-o 4.5 | `model.model_name_or_path`, `model.processor_name_or_path`, `model.token2wav_dir`, and `duplex.ref_audio_path`. |
+| Gander | `duplex.checkpoint` and `duplex.talker_checkpoint`. |
+| Managed ASR | `asr.model_path`. |
+| Brain | `worker.settings.codex_bin`; set `codex_home` only for a compatible wrapper with a separate authenticated home. |
+
+The template already contains the released 8-text/50-speech-token alignment,
+`context_slate`, full Brain tools, and the three-GPU mapping: GPU 0 for Thinker,
+GPU 1 for Talker, and GPU 2 for ASR.
+
+### 4. Validate and launch
+
+```bash
+./scripts/serve.sh --check-config
+./scripts/serve.sh
+```
+
+The preflight checks paths, dependencies, the worker executable, and GPU
+assignment without loading weights. Open `http://127.0.0.1:8000` after the
+service starts; `/health` and `/api/asr/health` report runtime and ASR readiness.
+
+For remote access, keep Gander on loopback and proxy both HTTP and WebSocket
+routes through HTTPS so browser microphone, camera, and screen permissions work
+normally.
 
 ## Streaming Cerebellum
 
@@ -160,17 +227,14 @@ proactive visual responses, and silence under irrelevant or non-directed input.
 
 ### Thinker-Talker speech generation
 
-The Thinker remains in the text and hidden-state domain. On a `speak` unit, the
-Talker conditions on those states and aligned text tokens to predict compact S3
-speech tokens; a causal flow-matching decoder converts them into waveform chunks
-as they arrive. The release checkpoint uses an alignment of eight text tokens to
-50 S3 tokens per unit.
+On a `speak` unit, the Talker conditions on Thinker hidden states and aligned text
+tokens to predict S3 speech tokens; a causal flow-matching decoder renders them
+incrementally. The released alignment is eight text tokens to 50 S3 tokens per
+unit. Serving the Talker on a separate GPU lets the Thinker process the next
+audio-visual unit while speech is synthesized and played.
 
-Online serving places the Talker on a separate GPU. The Thinker can therefore
-begin processing the next audio-visual unit while speech from the previous unit
-is still being synthesized and played. The Talker checkpoint contains only its
-trainable TTS tensors: deployment first composes the base model with the matching
-Thinker checkpoint, then overlays the Talker checkpoint.
+The Talker checkpoint contains only trainable TTS tensors. Deployment composes
+the base model with the matching Thinker checkpoint before applying the Talker.
 
 ### Bounded context for long sessions
 
@@ -234,27 +298,21 @@ Gander is trained on a 2.7M-example mixture organized around those behaviors.
 | Robustness and negatives | 229.7K | Irrelevant video, no-command environments, acoustic interference, overlapping distractors, and multi-party addressee tracking. |
 
 Agentic samples are timestamped User-Cerebellum-Brain trajectories rather than
-isolated tool calls. Audio-agent data cover task and interaction patterns;
-omni-agent data align observations and actions from GUI or video trajectories.
-Both are filtered for task validity, lifecycle completeness, conversational
-coherence, speech quality, and temporal consistency.
+isolated tool calls. Audio-agent and omni-agent paths are filtered for task
+validity, lifecycle completeness, conversational coherence, speech quality, and
+temporal consistency.
 
 ### Train-serve alignment
 
 The training path and realtime runtime share the same core contracts:
 
-- Multimodal inputs and model outputs are serialized into the same one-second
-  units, with one control decision per unit.
-- Visual evidence is selected by source time so that a unit cannot consume a
-  future frame.
+- Multimodal inputs and outputs use the same one-second units, with one control
+  decision per unit and visual evidence selected by source time.
 - Long-context training retains up to 128 prior units and a bounded previous-text
   context instead of silently truncating an oversized example.
 - Training-only acoustic augmentation can add ambient noise, babble, transients,
   device coloration, room response, echo, and idle periods while preserving the
   original interaction timeline.
-- Relative audio, image, and video paths resolve below `data.release_root`; video
-  files are consumed directly and do not require a repository-specific
-  materialization layer.
 
 Training is separated into two reproducible stages:
 
@@ -287,129 +345,6 @@ affect short spoken answers, and interaction tuning introduces a trade-off on
 some static visual-understanding tasks. See the
 [technical report](docs/gander-technical-report.pdf) for protocols, complete
 tables, ablations, and failure analysis.
-
-## Quick Start
-
-This section starts the complete browser system: managed ASR, streaming Thinker,
-detached Talker, agent runtime, web UI, and Codex-backed Brain. For model-only
-evaluation, skip to [Offline Inference](#offline-inference).
-
-### 1. Prerequisites
-
-| Requirement | Notes |
-| --- | --- |
-| Platform | Linux with an NVIDIA driver compatible with the CUDA 12.4 PyTorch stack in `environment.yml`. |
-| GPUs | The example profile uses three physical GPUs: one each for Thinker, Talker, and ASR. Assignments can be changed in YAML. |
-| Environment | Conda and Python 3.10. All Python packages are declared by the repository. |
-| Models | [MiniCPM-o 4.5](https://huggingface.co/openbmb/MiniCPM-o-4_5), a Gander Thinker checkpoint, its matching Talker checkpoint, and a faster-whisper large-v3 model. |
-| Brain | An authenticated Codex-compatible executable that supports `app-server --stdio`. No separate Brain HTTP service is required. |
-
-### 2. Install the repository
-
-```bash
-git clone https://github.com/Omni-Interaction-Gander/Omni-Interaction-Agent.git
-cd Omni-Interaction-Agent
-
-conda env create -f environment.yml
-conda activate gander
-```
-
-The environment installs PyTorch 2.6.0, Transformers 4.51.0, the Talker and S3
-dependencies, managed ASR, `mcpmft`, and `gander-runtime`.
-
-### 3. Download the model assets
-
-The commands below place the public base model, Gander release, and managed ASR
-model under `checkpoints/`. Existing local copies can be used instead.
-
-```bash
-mkdir -p checkpoints
-
-hf download openbmb/MiniCPM-o-4_5 \
-  --local-dir checkpoints/MiniCPM-o-4_5
-hf download Gander-Omni/Gander \
-  --local-dir checkpoints/Gander
-hf download Systran/faster-whisper-large-v3 \
-  --local-dir checkpoints/faster-whisper-large-v3
-```
-
-The MiniCPM-o directory must include `assets/token2wav/` and
-`assets/system_ref_audio.wav`. The Gander release provides the Thinker and Talker
-checkpoints; use the matching pair identified on the
-[model page](https://huggingface.co/Gander-Omni/Gander).
-
-### 4. Create the serving configuration
-
-```bash
-cp gander_runtime/configs/serve.example.yaml \
-  gander_runtime/configs/serve.local.yaml
-mkdir -p workspace
-```
-
-Edit `gander_runtime/configs/serve.local.yaml` and replace the path placeholders:
-
-| Setting | Point it to |
-| --- | --- |
-| `model.model_name_or_path` | Local MiniCPM-o 4.5 directory. |
-| `model.processor_name_or_path` | The same MiniCPM-o 4.5 directory. |
-| `model.token2wav_dir` | `<MiniCPM-o-4_5>/assets/token2wav`. |
-| `duplex.checkpoint` | Gander Thinker checkpoint. |
-| `duplex.talker_checkpoint` | Matching Gander Talker checkpoint. |
-| `duplex.ref_audio_path` | Reference voice WAV; `<MiniCPM-o-4_5>/assets/system_ref_audio.wav` is a valid default. |
-| `asr.model_path` | Local faster-whisper large-v3 directory. |
-| `worker.settings.codex_bin` | `codex` when it is on `PATH`, otherwise its absolute executable path. |
-| `worker.settings.codex_home` | Leave `null` for the standard authenticated home; set an explicit home only for a compatible wrapper. |
-| `worker.cwd` | Writable workspace available to Brain tools. The example uses `../workspace`. |
-
-Keep `duplex.generate_audio: true` and `model.init_tts: true` for spoken output.
-The released streaming alignment is configured by
-`duplex.speak_text_tokens_per_unit: 8` and
-`duplex.talker_speech_tokens_per_unit: 50`; these values must match the
-checkpoint.
-
-The example GPU mapping is intentional:
-
-| Physical GPU | Process view |
-| --- | --- |
-| GPU 0 | Thinker, exposed to the server process as logical `cuda:0`. |
-| GPU 1 | Detached Talker, exposed to the server process as logical `cuda:1`. |
-| GPU 2 | Managed ASR, isolated in its own process as logical `cuda:0`. |
-
-`server.cuda_visible_devices: "0,1"` controls the Thinker/Talker process, while
-`asr.cuda_visible_devices: "2"` controls the ASR subprocess. This separation
-prevents ASR and Talker load from competing with realtime Thinker inference.
-
-### 5. Validate and launch
-
-Run the preflight before loading any model weights:
-
-```bash
-./scripts/serve.sh --check-config
-```
-
-The check validates the YAML schema, required paths, worker executable, ASR
-dependency, and GPU assignment. Once it reports `"status": "ok"`, start the
-system:
-
-```bash
-./scripts/serve.sh
-```
-
-The default profile serves the browser at `http://127.0.0.1:8000` and enables
-camera or screen input, streamed Talker audio, `context_slate`, full Brain tools,
-task milestones, questions, permissions, interrupt, stop, reset, and clear.
-
-Use the health endpoints to distinguish the main service from managed ASR:
-
-```bash
-curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/api/asr/health
-```
-
-For access from another machine, keep Gander bound to `127.0.0.1` and place an
-HTTPS reverse proxy on the public port. The proxy must forward both HTTP and
-WebSocket routes. A secure browser origin is required for normal microphone,
-camera, and screen-sharing permissions.
 
 ## Training
 
@@ -555,24 +490,16 @@ Turn mode and duplex mode deliberately remain separate: the former measures
 response quality for a bounded multimodal request, while the latter exercises the
 same incremental control and context behavior used by the realtime Cerebellum.
 
-## Runtime Configuration
+## Deployment Options
 
-The serving YAML exposes the main deployment choices without requiring alternate
-startup scripts.
+The main deployment choices live in the same serving YAML:
 
 | Setting | Options and effect |
 | --- | --- |
 | `server.mode` | `lean` directly executes trusted Cerebellum task actions with the shortest control path. `coordinator` adds a planning control layer for per-task reasoning, supervision, and delivery policy. |
 | `duplex.media_mode` | `voice` starts with audio interaction; `omni` requires visual input; `auto` permits client selection. `allow_client_video` independently controls camera and screen attachment. |
-| `duplex.sliding_window_mode` | Selects `context_no_previous`, `context_slate`, or `context_memory` as described above. |
-| `worker.provider` | Selects a registered Brain backend. This release includes `codex`; the registry and factory are ready for additional providers. |
-| `worker.profile` | `task_scoped` limits the worker surface to task-oriented capabilities; `full` keeps the provider's complete configured tool surface. |
+| `worker.provider` / `worker.profile` | Selects a registered Brain backend and either its task-scoped or full tool surface. This release includes `codex`. |
 | `asr.mode` | Runs managed local ASR, connects to an external ASR service, or disables ASR where the workflow does not require transcripts. |
-
-`context_slate` does not require a memory service. `context_memory` additionally
-uses `memory.url` and reads its bearer token from the environment variable named
-by `memory.token_env`. Proxy variables exported before `scripts/serve.sh` are
-inherited by the Brain worker.
 
 ## Repository Layout
 
