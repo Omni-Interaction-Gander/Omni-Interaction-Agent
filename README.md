@@ -66,10 +66,10 @@ full-duplex interaction and long-running task execution.
 ## 🎬 Demo
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=rbYx72330T8">
-    <img src="https://img.youtube.com/vi/rbYx72330T8/maxresdefault.jpg" alt="Watch the Gander demo on YouTube" width="90%">
+  <a href="https://youtu.be/-HFTZaZkfEU">
+    <img src="docs/assets/omni.png" alt="Watch the Gander demo on YouTube" width="90%">
   </a><br>
-  <a href="https://www.youtube.com/watch?v=rbYx72330T8"><strong>▶ Watch the Gander demo on YouTube</strong></a>
+  <a href="https://youtu.be/-HFTZaZkfEU"><strong>▶ Watch the Gander demo on YouTube</strong></a>
 </p>
 
 <a id="system-design"></a>
@@ -513,7 +513,7 @@ The main deployment choices live in the serving YAML:
 | Paper | [Omni Interaction Agent Technical Report](docs/omni_interaction_agent.pdf) |
 | Model | [Gander-Omni/Gander](https://huggingface.co/Gander-Omni/Gander) |
 | Dataset | Coming soon |
-| Demo | [Project page](https://Omni-Interaction-Gander.github.io/Omni-Interaction-Agent) · [YouTube](https://www.youtube.com/watch?v=rbYx72330T8) |
+| Demo | [Project page](https://Omni-Interaction-Gander.github.io/Omni-Interaction-Agent) · [YouTube](https://youtu.be/-HFTZaZkfEU) |
 
 <a id="license"></a>
 
