@@ -22,6 +22,7 @@
 </p>
 
 <p align="center">
+  <a href="#news">News</a> ·
   <a href="#demo">Demo</a> ·
   <a href="#system-design">System</a> ·
   <a href="#evaluation">Evaluation</a> ·
@@ -31,6 +32,12 @@
 </p>
 
 ---
+
+<a id="news"></a>
+
+## 📰 News
+
+- **2026-09-09:** Gander is officially released.
 
 <a id="overview"></a>
 
