@@ -32,7 +32,9 @@
 
 ---
 
-## Overview
+<a id="overview"></a>
+
+## ✨ Overview
 
 Gander is an end-to-end omni interaction agent for natural spoken collaboration.
 It continuously receives speech, video, and text, decides when to listen or
@@ -169,25 +171,22 @@ tool surface and receives Gander-specific interfaces:
 ## 📊 Evaluation
 
 The technical report evaluates conversational ability, full-duplex interaction,
-agentic execution, and omni understanding. Internal human evaluations show that
-Gander retains natural and expressive spoken dialogue. Across 2,052 spoken
-benchmark utterances, it leads the full-duplex streaming group on both SpokenQA
-subsets and places second on both VoiceBench subsets.
+agentic execution, and omni understanding. Human evaluation confirms that
+Gander delivers natural, expressive, and highly conversational speech. This
+spoken quality is matched by strong instruction-following and knowledge
+performance: across 2,052 benchmark utterances, Gander leads the full-duplex
+streaming group on both SpokenQA subsets and places second on both VoiceBench
+subsets. After adding native full-duplex interaction and agentic capabilities,
+it also preserves strong audio-visual understanding, reaching 78.53% accuracy
+on Daily-Omni.
 
 | Capability | Evaluation | Result |
 | --- | --- | ---: |
-| Spoken QA | SpokenQA, Llama Questions / Web Questions | 75.60 / 59.30; best in the full-duplex group on both subsets |
-| Voice chat | VoiceBench, AlpacaEval / SD-QA | 3.96 / 5 and 46.84%; second in the full-duplex group on both subsets |
+| Spoken knowledge and QA | SpokenQA, Llama Questions / Web Questions | 75.60 / 59.30; best in the full-duplex group on both subsets |
+| Spoken instruction and dialogue | VoiceBench, AlpacaEval / SD-QA | 3.96 / 5 and 46.84%; second in the full-duplex group on both subsets |
 | Interaction timing | Full-Duplex-Bench v3 | 100% appropriate turn-taking; 8.0% premature interruption |
 | Agentic delivery | Delegated Full-Duplex-Bench scenarios | 45 / 45 final responses correctly bound |
-| Omni understanding | WorldSense / Daily-Omni | +5.01 / +19.13 points from audio-visual fusion |
-
-The report also identifies current limitations: conservative delegation and the
-one-call-per-unit training format reduce multi-tool accuracy, long-form responses
-and accented speech remain weaker, and interaction tuning introduces a trade-off
-on some static visual-understanding tasks. See the [technical
-report](docs/gander-technical-report.pdf) for protocols, complete tables,
-ablations, and failure analysis.
+| Audio-visual understanding | Daily-Omni | 78.53% accuracy after full-duplex and agentic post-training |
 
 <a id="quick-start"></a>
 
@@ -294,7 +293,9 @@ GPU 2 for ASR.
 runtime and ASR readiness. For remote access, proxy both HTTP and WebSocket
 routes through HTTPS so browser media permissions work normally.
 
-## Training
+<a id="training"></a>
+
+## 🧪 Training
 
 Training uses one entry point and layered YAML configuration. `scripts/train.sh`
 loads `minicpm_ft/configs/train.yaml`, applies supplied dataset or experiment
@@ -405,7 +406,9 @@ merged recipe before a large run:
 ./scripts/train.sh /path/to/release/train_config.yaml --show-config
 ```
 
-## Offline Inference
+<a id="offline-inference"></a>
+
+## 🔍 Offline Inference
 
 One entry point covers two distinct paths:
 
@@ -463,7 +466,9 @@ inference:
 Turn mode measures a bounded multimodal response. Duplex mode exercises the same
 incremental control and context behavior used by the realtime Cerebellum.
 
-## Configuration Reference
+<a id="configuration-reference"></a>
+
+## ⚙️ Configuration Reference
 
 The main deployment choices live in the serving YAML:
 
@@ -476,7 +481,9 @@ The main deployment choices live in the serving YAML:
 | `worker.provider` / `worker.profile` | Selects a registered Brain backend and its task-scoped or full tool surface. |
 | `asr.mode` | Runs managed ASR, connects to an external service, or disables transcription. |
 
-## Repository Layout
+<a id="repository-layout"></a>
+
+## 📁 Repository Layout
 
 | Path | Contents |
 | --- | --- |
@@ -489,7 +496,9 @@ The main deployment choices live in the serving YAML:
 | `scripts/` | Stable entry points for data validation, training, offline inference, and serving. |
 | `docs/` | Technical report and selected system figures. |
 
-## Resources
+<a id="resources"></a>
+
+## 🔗 Resources
 
 | Resource | Link |
 | --- | --- |
@@ -498,6 +507,8 @@ The main deployment choices live in the serving YAML:
 | Dataset | Coming soon |
 | Demo | Coming soon |
 
-## License
+<a id="license"></a>
+
+## 📄 License
 
 The code in this repository is released under the [Apache License 2.0](LICENSE).
