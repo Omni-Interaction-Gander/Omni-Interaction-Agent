@@ -43,23 +43,13 @@
 
 ## ✨ Overview
 
-Gander is an end-to-end omni interaction agent for natural spoken collaboration.
-It continuously receives speech, video, and text, decides when to listen or
-speak, and remains available while a general-purpose agent reasons and acts in
-the background.
+**Gander is an open-source, end-to-end omni interaction agent that keeps the conversation flowing while getting work done.** It unifies natural voice chat, native full-duplex interaction, and continuous multimodal perception—so you can speak, interrupt, or share your screen while work continues.
 
-Gander is a capable voice-chat model, not merely a spoken task router. Internal
-human evaluations find that it preserves the natural and expressive dialogue
-quality of strong open-source spoken-dialogue models while adding native
-full-duplex interaction and long-running task execution.
+Trained for spoken collaboration, Gander combines **natural, expressive dialogue with competitive knowledge and instruction-following performance**. Its **Brain–Cerebellum architecture** pairs a capable streaming conversational model with an asynchronous reasoning agent, bringing responsive interaction and long-running execution into the same conversation.
 
-- **Natural voice chat.** Conversational speech, backchannels, overlap handling,
-  interruption, and proactive responses are learned model behaviors.
-- **Continuous omni perception.** Speech, camera, and screen streams share a
-  causal timeline, grounding conversation in the scene as it evolves.
-- **Agentic collaboration.** Complex work runs asynchronously and remains
-  steerable through follow-ups, questions, permissions, progress, and
-  cancellation.
+- **Natural conversation, learned interaction.** Turn-taking, backchannels, overlap handling, interruption, and proactive responses are learned model behaviors. Gander learns both what to say and when to say it.
+- **See and hear as events unfold.** Speech, video, and text share a causal timeline, grounding dialogue in your words, your screen, and the changing scene around you.
+- **Keep talking while it works.** Delegate complex tasks and stay involved throughout execution: refine requirements, ask follow-up questions, check progress, grant permissions, or cancel—all through the ongoing conversation.
 
 <a id="demo"></a>
 
