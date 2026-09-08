@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/omni_interaction_agent.pdf"><img src="https://img.shields.io/badge/Paper-PDF-C62828?style=flat-square" alt="Paper PDF"></a>
+  <a href="docs/Omni%20Interaction%20Agent%20Technical%20Report.pdf"><img src="https://img.shields.io/badge/Paper-PDF-C62828?style=flat-square" alt="Paper PDF"></a>
   <a href="https://Omni-Interaction-Gander.github.io/Omni-Interaction-Agent"><img src="https://img.shields.io/badge/Demo-Project_Page-2563EB?style=flat-square" alt="Gander project page"></a>
   <a href="#resources"><img src="https://img.shields.io/badge/Dataset-Coming_Soon-059669?style=flat-square" alt="Dataset coming soon"></a>
   <a href="https://huggingface.co/Gander-Omni/Gander"><img src="https://img.shields.io/badge/Model-Hugging_Face-D97706?style=flat-square" alt="Gander model on Hugging Face"></a>
@@ -500,7 +500,7 @@ The main deployment choices live in the serving YAML:
 
 | Resource | Link |
 | --- | --- |
-| Paper | [Omni Interaction Agent Technical Report](docs/omni_interaction_agent.pdf) |
+| Paper | [Omni Interaction Agent Technical Report](docs/Omni%20Interaction%20Agent%20Technical%20Report.pdf) |
 | Model | [Gander-Omni/Gander](https://huggingface.co/Gander-Omni/Gander) |
 | Dataset | Coming soon |
 | Demo | [Project page](https://Omni-Interaction-Gander.github.io/Omni-Interaction-Agent) · [YouTube](https://youtu.be/-HFTZaZkfEU) |
