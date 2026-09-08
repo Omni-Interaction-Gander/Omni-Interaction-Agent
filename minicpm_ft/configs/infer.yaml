@@ -45,9 +45,9 @@ inference:
     chunk_ms: 1000
     first_chunk_ms: 1035
     ls_mode: explicit
-    speak_text_tokens_per_unit: 4
-    max_new_speak_tokens_per_chunk: null
-    max_new_tool_tokens: 96
+    speak_text_tokens_per_unit: 8
+    max_new_speak_tokens_per_chunk: 11
+    max_new_tool_tokens: 256
     max_tool_response_tokens: 256
     max_tool_calls_per_unit: 4
     max_tool_schemas: 6
@@ -58,15 +58,15 @@ inference:
     temperature: 0.7
     top_p: 0.8
     top_k: 20
-    sliding_window_mode: context_no_previous
+    sliding_window_mode: context_slate
     basic_window_high_tokens: 8000
     basic_window_low_tokens: 6000
-    context_previous_max_tokens: 0
+    context_previous_max_tokens: 1500
     context_max_units: 128
     memory_slate_max_tokens: 256
     memory_lead_ratio: 0.7
     memory_soft_ratio: 0.9
     memory_hard_ratio: 1.0
     memory_kv_ceiling_units: null
-    talker_speech_tokens_per_unit: 25
+    talker_speech_tokens_per_unit: 50
     talker_final_speech_tokens_max: 0

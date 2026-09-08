@@ -39,10 +39,10 @@ It continuously receives speech, video, and text, decides when to listen or
 speak, and remains available while a general-purpose agent reasons and acts in
 the background.
 
-Gander is also a capable voice-chat model in its own right. Internal human
-evaluations find that it preserves the natural and expressive dialogue quality
-of strong open-source spoken-dialogue models while adding native full-duplex
-interaction and long-running task execution.
+Gander is a capable voice-chat model, not merely a spoken task router. Internal
+human evaluations find that it preserves the natural and expressive dialogue
+quality of strong open-source spoken-dialogue models while adding native
+full-duplex interaction and long-running task execution.
 
 - **Natural voice chat.** Conversational speech, backchannels, overlap handling,
   interruption, and proactive responses are learned model behaviors.
@@ -82,7 +82,7 @@ The system separates responsibilities without separating the conversation:
 A live request follows one causal path:
 
 1. The browser streams microphone audio and optional camera or screen frames.
-   Source timestamps align each visual frame with the audio unit that observed it.
+   Source timestamps align visual evidence with the audio captured at that time.
 2. The Cerebellum predicts whether to listen, speak, interrupt, or invoke a task
    operation. Simple requests are answered locally.
 3. The runtime binds agentic work to the finalized user turn and starts a tracked
@@ -252,7 +252,7 @@ cp gander_runtime/configs/serve.example.yaml \
 mkdir -p workspace
 ```
 
-Set the following paths in `serve.local.yaml`:
+Replace the path placeholders in `serve.local.yaml` with absolute paths:
 
 | Asset | Configuration fields |
 | --- | --- |
@@ -289,10 +289,10 @@ GPU 2 for ASR.
 ./scripts/serve.sh
 ```
 
-Open `http://127.0.0.1:8000` after the service starts. `/health` and
-`/api/asr/health` report runtime and ASR readiness. For remote access, proxy both
-HTTP and WebSocket routes through HTTPS so browser microphone, camera, and screen
-permissions work normally.
+`--check-config` validates the service without loading model weights. Open
+`http://127.0.0.1:8000` after launch; `/health` and `/api/asr/health` report
+runtime and ASR readiness. For remote access, proxy both HTTP and WebSocket
+routes through HTTPS so browser media permissions work normally.
 
 ## Training
 
@@ -321,7 +321,8 @@ Training and serving share three core contracts:
 - Inputs and outputs use the same one-second causal units, with visual evidence
   selected by source time.
 - Long-context training retains up to 128 prior units and 1,500 previous-context
-  tokens rather than truncating an oversized example in place.
+  tokens; examples beyond the 16,384-token limit are filtered rather than
+  truncated.
 - Acoustic augmentation preserves the interaction timeline while adding noise,
   babble, transients, device coloration, room response, echo, or idle periods.
 
@@ -378,8 +379,9 @@ THINKER=/absolute/path/to/thinker-checkpoint
 ```
 
 Talker mode freezes the completed Thinker's LLM and audio projection, and trains
-only the TTS projection and decoder. Bundled examples contain S3 targets; for a
-dataset without inline `turn.meta.s3_codes`, build the cache first:
+only the TTS projection and decoder. Bundled examples contain S3 targets. For a
+dataset without inline `turn.meta.s3_codes`, set `data.s3_cache_dir` in its
+training YAML and build the cache first:
 
 ```bash
 ./scripts/prepare_data.sh s3 /path/to/release/train_config.yaml --device cuda:0
@@ -431,7 +433,9 @@ inference:
   mode: duplex
   checkpoint: /path/to/gander-thinker-checkpoint
   input:
+    text: null
     audio: /path/to/input.wav
+    image: null
   duplex:
     chunk_ms: 1000
     speak_text_tokens_per_unit: 8
