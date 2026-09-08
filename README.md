@@ -13,6 +13,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/assets/gander-capabilities.png" alt="Gander capabilities across live audio-visual interaction and agentic tasks" width="100%">
+</p>
+
+<p align="center">
   <strong>Talk while it works.</strong><br>
   Interrupt it, redirect it, or show it what you see without stopping the task.
 </p>
@@ -53,9 +57,9 @@ interaction and long-running task execution.
 ## 🎬 Demo
 
 <p align="center">
-  <!-- Demo video slot: replace this preview block with the uploaded video URL. -->
-  <img src="docs/assets/gander-capabilities.png" alt="Gander demo preview covering voice chat, visual interaction, and agentic work" width="96%"><br>
-  <sub><strong>Demo video coming soon.</strong> This space is reserved for the public system demo.</sub>
+  <!-- Replace this placeholder with the uploaded demo video URL. -->
+  <strong>▶ Demo video coming soon</strong><br>
+  <sub>Reserved for the public Gander system demo.</sub>
 </p>
 
 <a id="system-design"></a>
