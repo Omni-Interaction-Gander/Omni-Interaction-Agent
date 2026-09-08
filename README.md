@@ -6,8 +6,8 @@
 </p>
 
 <p align="center">
-  <a href="docs/gander-technical-report.pdf"><img src="https://img.shields.io/badge/Paper-PDF-C62828?style=flat-square" alt="Paper PDF"></a>
-  <a href="#demo"><img src="https://img.shields.io/badge/Demo-Coming_Soon-2563EB?style=flat-square" alt="Demo coming soon"></a>
+  <a href="docs/omni_interaction_agent.pdf"><img src="https://img.shields.io/badge/Paper-PDF-C62828?style=flat-square" alt="Paper PDF"></a>
+  <a href="https://Omni-Interaction-Gander.github.io/Omni-Interaction-Agent"><img src="https://img.shields.io/badge/Demo-Project_Page-2563EB?style=flat-square" alt="Gander project page"></a>
   <a href="#resources"><img src="https://img.shields.io/badge/Dataset-Coming_Soon-059669?style=flat-square" alt="Dataset coming soon"></a>
   <a href="https://huggingface.co/Gander-Omni/Gander"><img src="https://img.shields.io/badge/Model-Hugging_Face-D97706?style=flat-square" alt="Gander model on Hugging Face"></a>
 </p>
@@ -66,9 +66,10 @@ full-duplex interaction and long-running task execution.
 ## 🎬 Demo
 
 <p align="center">
-  <!-- Replace this placeholder with the uploaded demo video URL. -->
-  <strong>▶ Demo video coming soon</strong><br>
-  <sub>Reserved for the public Gander system demo.</sub>
+  <a href="https://www.youtube.com/watch?v=rbYx72330T8">
+    <img src="https://img.youtube.com/vi/rbYx72330T8/maxresdefault.jpg" alt="Watch the Gander demo on YouTube" width="90%">
+  </a><br>
+  <a href="https://www.youtube.com/watch?v=rbYx72330T8"><strong>▶ Watch the Gander demo on YouTube</strong></a>
 </p>
 
 <a id="system-design"></a>
@@ -509,10 +510,10 @@ The main deployment choices live in the serving YAML:
 
 | Resource | Link |
 | --- | --- |
-| Paper | [Omni Interaction Agent Technical Report](docs/gander-technical-report.pdf) |
+| Paper | [Omni Interaction Agent Technical Report](docs/omni_interaction_agent.pdf) |
 | Model | [Gander-Omni/Gander](https://huggingface.co/Gander-Omni/Gander) |
 | Dataset | Coming soon |
-| Demo | Coming soon |
+| Demo | [Project page](https://Omni-Interaction-Gander.github.io/Omni-Interaction-Agent) · [YouTube](https://www.youtube.com/watch?v=rbYx72330T8) |
 
 <a id="license"></a>
 
