@@ -133,7 +133,7 @@ evaluation, see [Offline Inference](#offline-inference).
 | System | Linux, Conda, and an NVIDIA driver compatible with the CUDA 12.4 PyTorch stack. |
 | GPUs | The example uses three physical GPUs, one each for Thinker, Talker, and ASR. |
 | Models | [MiniCPM-o 4.5](https://huggingface.co/openbmb/MiniCPM-o-4_5), a Gander Thinker checkpoint, its matching Talker checkpoint, and faster-whisper large-v3. |
-| Brain | An authenticated Codex-compatible executable supporting `app-server --stdio`. |
+| Brain | An authenticated Codex CLI or compatible executable supporting `app-server --stdio`. |
 
 ### 2. Install and download
 
@@ -157,6 +157,17 @@ Existing local model copies work as well. Use the matching Thinker and Talker
 pair identified on the [Gander model
 page](https://huggingface.co/Gander-Omni/Gander).
 
+Install [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) on the serving
+machine and sign in once:
+
+```bash
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+codex
+```
+
+After sign-in, `codex app-server --help` should complete successfully. Gander
+starts the app server itself when the service launches.
+
 ### 3. Configure
 
 ```bash
@@ -173,6 +184,25 @@ Replace the path placeholders in `serve.local.yaml`:
 | Gander | `duplex.checkpoint` and `duplex.talker_checkpoint`. |
 | Managed ASR | `asr.model_path`. |
 | Brain | `worker.settings.codex_bin`; set `codex_home` only for a compatible wrapper with a separate authenticated home. |
+
+The Brain configuration is intentionally small:
+
+```yaml
+worker:
+  provider: codex
+  cwd: ../workspace
+  profile: full
+  settings:
+    codex_bin: codex
+    model: null
+    reasoning_effort: medium
+    codex_home: null
+```
+
+`cwd` is the workspace available to the Brain. `codex_bin` may be a command on
+`PATH` or an absolute path; `model: null` keeps the Codex default model. The
+`full` profile exposes Codex tools together with Gander context and sharing
+tools.
 
 The template already contains the released 8-text/50-speech-token alignment,
 `context_slate`, full Brain tools, and the three-GPU mapping: GPU 0 for Thinker,
