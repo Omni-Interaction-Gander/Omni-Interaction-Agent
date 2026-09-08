@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Omni Interaction Agent</strong><br>
-  <sub>Continuous perception, native realtime interaction, and long-horizon agentic execution in one system.</sub>
+  <sub>Natural voice conversation, continuous omni perception, and long-horizon agentic execution in one system.</sub>
 </p>
 
 <!-- Replace the remaining #resources targets when the public pages are released. -->
@@ -40,6 +40,12 @@ runs elsewhere. Gander is built for a different form of collaboration. It
 continuously receives speech, video, and text; regulates when to listen, speak, or
 yield; and remains available while a general-purpose agent reasons and acts in the
 background.
+
+Gander remains a capable voice-chat model rather than becoming only a spoken task
+router. Internal human evaluations find that it preserves the natural and
+expressive dialogue quality of strong open-source spoken-dialogue models, while
+its native interaction policy adds backchannels, overlap handling, and
+interruption.
 
 <table>
   <tr>
@@ -356,23 +362,26 @@ composition follow the two-stage path.
 
 ## Evaluation Snapshot
 
-The technical report evaluates Gander as a complete interaction system rather
-than only as a static multimodal model. A few results illustrate the behavior the
-architecture is designed to produce:
+The technical report evaluates conversational ability alongside full-duplex
+interaction, agentic execution, and omni understanding. Across 2,052 spoken
+evaluation utterances, Gander leads the full-duplex streaming group on both
+SpokenQA subsets and places second on both VoiceBench subsets:
 
 | Evaluation | Result |
 | --- | ---: |
+| SpokenQA, Llama Questions / Web Questions | 75.60 / 59.30; best in the full-duplex group on both subsets |
+| VoiceBench, AlpacaEval / SD-QA | 3.96 / 5 and 46.84%; second in the full-duplex group on both subsets |
 | Full-Duplex-Bench v3, appropriate turn-taking | 100% across 100 scenarios |
-| Full-Duplex-Bench v3, premature interruption | 6.0% |
-| Delegated scenarios correctly bound to the final response | 40 / 40 |
+| Full-Duplex-Bench v3, premature interruption | 8.0% |
+| Delegated scenarios correctly bound to the final response | 45 / 45 |
 | Audio-visual fusion gain on WorldSense | +5.01 points |
 | Audio-visual fusion gain on Daily-Omni | +19.13 points |
 
 These numbers are not presented as a single overall ranking. The report also
-documents the current limitations: conservative delegation and limited
-multi-tool supervision reduce task accuracy, speech synthesis and ASR errors
-affect short spoken answers, and interaction tuning introduces a trade-off on
-some static visual-understanding tasks. See the
+documents the current limitations: conservative delegation and the
+one-call-per-unit training format reduce multi-tool accuracy, long-form
+responses and accented speech remain weaker, and interaction tuning introduces
+a trade-off on some static visual-understanding tasks. See the
 [technical report](docs/gander-technical-report.pdf) for protocols, complete
 tables, ablations, and failure analysis.
 
