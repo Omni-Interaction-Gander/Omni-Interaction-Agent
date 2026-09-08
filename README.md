@@ -185,7 +185,7 @@ Replace the path placeholders in `serve.local.yaml`:
 | Managed ASR | `asr.model_path`. |
 | Brain | `worker.settings.codex_bin`; set `codex_home` only for a compatible wrapper with a separate authenticated home. |
 
-The Brain configuration is intentionally small:
+The Brain configuration like:
 
 ```yaml
 worker:
