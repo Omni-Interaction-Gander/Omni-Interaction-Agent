@@ -709,13 +709,10 @@ class TaskLedger:
         ttl_ms: int,
         max_terminal: int,
     ) -> tuple[str, ...]:
-        """Drop terminal tasks so the ledger does not grow without bound.
+        """Prune terminal tasks by age and per-kind count.
 
-        A terminal task is removed when it is older than ``ttl_ms`` OR when the
-        owner keeps more than ``max_terminal`` of its kind (oldest first). Hidden
-        side queries therefore cannot evict user-visible main tasks. Tasks with a
-        still-pending delivery are always kept, so a result is never dropped
-        before it is spoken. Returns the removed task ids.
+        Main tasks and side queries have separate quotas. Pending deliveries retain
+        their tasks. Returns the removed task IDs.
         """
 
         with self._lock, self._connection:
@@ -738,7 +735,7 @@ class TaskLedger:
                 and task.task_id not in pending_task_ids
                 and task.task_id not in protected_parent_ids
             ]
-            # _list is ordered by updated_at_ms ascending → oldest first.
+            # `_list` is ordered oldest first.
             now = now_ms()
             removed: list[str] = []
             keep_by_kind: dict[str, list[TaskRecord]] = {
@@ -1319,9 +1316,7 @@ class TaskLedger:
                 return None
             normalized_decision = decision
             if current.kind == "choice":
-                # Choices are UI hints, not a restriction on natural-language
-                # task_send replies. Only validate a provider-supplied discrete
-                # decision; otherwise preserve the user's raw text for the Worker.
+                # Choices guide the UI; free-form task_send replies remain valid.
                 if decision is not None and decision not in current.choices:
                     raise ValueError(
                         "choice decision must be one of the interaction choices"

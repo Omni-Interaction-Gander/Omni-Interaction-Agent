@@ -56,9 +56,7 @@ def serialize_frontbrain_sample(
         pinned_context=resolved_pinned_context,
     )
     if pinned_context is not None and not resolved_pinned_context:
-        # The source row may retain a static SLATE. An explicit empty
-        # override is a training-view decision, so stale source metadata must not make sliding
-        # context reserve nonexistent pinned tokens.
+        # An explicit empty override removes source SLATE metadata from this view.
         serialized.meta.pop("pinned_context", None)
         serialized.meta.pop("pinned_context_tokens", None)
         serialized.meta["sample_pinned_context_disabled"] = True

@@ -46,8 +46,7 @@ path:
   enable_omniflow: true
 
 data:
-  # Makes the base recipe runnable with the compact release examples. A dataset
-  # train_config.yaml overrides this root with its own location.
+  # Default root for the bundled examples.
   release_root: ../examples/release
   manifest_paths: []
   manifest_row_counts: []
@@ -90,7 +89,7 @@ data:
   seed: 42
 
 train:
-  # Change only this value to select the coherent Thinker, Talker, or joint recipe below.
+  # Select thinker, talker, or joint training.
   mode: thinker
   output_dir: outputs/gander
   deepspeed: configs/deepspeed/zero2.json
@@ -125,8 +124,7 @@ runtime:
   dry_run: false
   skip_final_save: false
 
-# Mode entries contain only fields that must change together. Values here override the common
-# configuration above; dotted command-line overrides are applied last.
+# Mode values override the common configuration; CLI overrides apply last.
 train_modes:
   thinker:
     model:
@@ -212,7 +210,7 @@ train_modes:
         - talker/manifests/agent_runtime.talker.train.jsonl
         - talker/manifests/irrelevant_video.talker.train.jsonl
         - talker/manifests/task_slate.talker.train.jsonl
-      # The compact examples embed real v63 S3 targets. Production releases use a cache.
+      # Release examples store S3 targets inline.
       s3_cache_dir: null
     train:
       output_dir: outputs/talker
@@ -229,7 +227,7 @@ train_modes:
       save_total_limit: 3
       dataloader_num_workers: 1
     runtime:
-      # Talker checkpoints contain only TTS tensors, so always compose the frozen Thinker first.
+      # Compose frozen Thinker weights before loading a Talker checkpoint.
       init_checkpoint: /path/to/thinker-checkpoint
       init_checkpoint_prefixes:
         - llm.

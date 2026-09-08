@@ -242,7 +242,7 @@ class ProviderRegistry:
 
 
 class WorkerControl:
-    """Gateway hooks a provider must use before side effects and for evidence."""
+    """Provider hooks for authorization and evidence recording."""
 
     def __init__(
         self,
@@ -657,8 +657,7 @@ class WorkerRunChannel:
         if message.mode == "update":
             await self.provider_run.steer(
                 TaskUpdate(
-                    # preempt => replace the in-flight turn (barge-in);
-                    # otherwise additive soft steer.
+                    # Preemption replaces the active turn; soft steer appends to it.
                     mode="replace" if message.preempt else "additive",
                     event=event,
                     instruction=message.instruction,
@@ -863,9 +862,9 @@ class GanderGateway:
         screen_context_window_ms: int = 8_000,
         permission_timeout_ms: int = 300_000,
         max_queued_tasks_per_owner: int = 64,
-        terminal_task_ttl_ms: int = 3_600_000,  # keep finished tasks ~1h
+        terminal_task_ttl_ms: int = 3_600_000,  # retain finished tasks for about 1 h
         max_terminal_tasks_per_owner: int = 20,
-        recent_task_window_ms: int = 600_000,  # finished tasks stay referenceable ~10min
+        recent_task_window_ms: int = 600_000,  # reference window for finished tasks
         coordinator_timeout_s: float = 20.0,
         provider_command_timeout_s: float = 30.0,
         provider_start_timeout_s: float = 60.0,
@@ -942,12 +941,10 @@ class GanderGateway:
         }
         self._project_sessions: dict[str, WorkerProject] = {}
         self._runtime_runs: dict[str, WorkerRun] = {}
-        # Session-level "allow subsequent permissions" grants. In-memory only:
-        # they die on restart so a fresh process re-prompts (default-safe).
+        # Session-scoped permission grants and delivery preferences.
         self._standing_allow: set[str] = set()
-        # Session-level delivery directives, also in-memory / restart-lossy.
-        self._muted: set[str] = set()  # "先别打扰": hold all deliveries
-        self._interrupt_subscribed: set[str] = set()  # may INTERRUPT (non-risk)
+        self._muted: set[str] = set()
+        self._interrupt_subscribed: set[str] = set()
         self._task_jobs: dict[str, asyncio.Task[None]] = {}
         self._coordination_jobs: dict[str, asyncio.Task[None]] = {}
         self._coordination_finished: dict[str, asyncio.Event] = {}
@@ -1087,13 +1084,9 @@ class GanderGateway:
         provider_name: str | None = None,
         timeout: float | None = None,
     ) -> TaskControlResult:
-        """Compile one native ``task_start`` through the LLM Coordinator.
+        """Compile task_start into a coordinator contract.
 
-        The function call has already classified the operation, so the
-        Coordinator may choose the execution contract and reasoning profile but
-        cannot reinterpret it as a send, cancel, policy update, or question.
-        The Runtime-owned turn remains the task objective; ``name`` is only its
-        stable front-brain handle.
+        The bound turn supplies the objective; name is its stable front-brain handle.
         """
 
         if self.mode != "coordinator":
@@ -1537,8 +1530,7 @@ class GanderGateway:
         kind_filter = set(kinds)
         selection = "refs" if refs else "search" if query else "kinds"
         if not refs and not query and not kind_filter:
-            # The least surprising zero-argument call is the context present
-            # when the task was created, not events produced by the task later.
+            # A zero-argument fetch returns the context captured at task creation.
             kind_filter = {"realtime"}
             selection = "task_start"
         if kind_filter:
@@ -2032,15 +2024,7 @@ class GanderGateway:
         return self._owned_task(task_id)
 
     def set_directive(self, owner_id: str, directive: str) -> bool:
-        """Apply an in-execution, session-level user directive that the harness
-        must hold deterministically (not the worker). All in-memory / restart-
-        lossy / default-safe. Returns True if the directive is recognized.
-
-          revoke_session  撤销"后续都允许",恢复逐次征询
-          mute            先别打扰:后续投递一律 hold
-          unmute          恢复投递
-          subscribe_interrupt / unsubscribe_interrupt  是否允许非系统事件打断
-        """
+        """Apply a session-scoped delivery or permission directive."""
         if directive == "revoke_session":
             self._standing_allow.discard(owner_id)
         elif directive == "mute":
@@ -2057,17 +2041,15 @@ class GanderGateway:
 
     def pending_deliveries(self, owner_id: str) -> tuple[DeliveryRecord, ...]:
         if owner_id in self._muted:
-            return ()  # "先别打扰": hold everything until unmuted
+            return ()
         self.ledger.requeue_expired_delivery_claims(owner_id)
         deliveries = [
             item
             for item in self.ledger.list_deliveries(owner_id)
             if item.state == "pending"
         ]
-        # INTERRUPT only truly interrupts when the user subscribed to it;
-        # otherwise it is downgraded to a safe pause (system-risk interrupts are
-        # decided upstream in arbitration, not here). Lean mode fully trusts the
-        # back-brain: it emits interrupt only at genuine urgency, so no gate.
+        # Subscribed interrupts preempt output; other deliveries pause. Lean mode
+        # accepts the back brain's interrupt classification directly.
         if (
             self.mode == "coordinator"
             and owner_id not in self._interrupt_subscribed
@@ -2624,7 +2606,7 @@ class GanderGateway:
     def record_realtime_context(
         self, *, owner_id: str, event: ContextEvent
     ) -> bool:
-        """Persist one trusted pre-task realtime event for later pull context."""
+        """Persist one pre-task realtime event for later pull context."""
 
         if not owner_id:
             raise ValueError("realtime context owner_id must not be empty")
@@ -2640,12 +2622,10 @@ class GanderGateway:
         turn: TurnEnvelope,
         ref: str | None = None,
     ) -> TaskControlResult:
-        """Send the bound user turn to a task's main or read-only fork lane.
+        """Send the bound turn to a task's main or read-only fork lane.
 
-        ``main`` answers an ordinary pending interaction when one exists;
-        otherwise it updates the active run, preempting only when the provider
-        truthfully advertises native steering. ``fork`` never falls back to an
-        update/next-turn message because that would mutate the main task.
+        Main resolves pending interaction or updates the active run. Fork creates an
+        independent side query and requires native fork support.
         """
 
         if lane not in TASK_LANES:
@@ -2702,12 +2682,7 @@ class GanderGateway:
     def available_task_resolve_actions(
         self, owner_id: str
     ) -> tuple[TaskResolveAction, ...]:
-        """Return the action enum currently useful for this owner's slate.
-
-        A JSON schema cannot express a dependency between ``task`` and
-        ``action`` when several tasks have different states, so this is the
-        safe union. ``task_resolve`` still validates the selected pair.
-        """
+        """Return the union of resolve actions available across the owner's tasks."""
 
         active, _ = self._control_task_views(owner_id)
         actions: set[TaskResolveAction] = set()
@@ -3050,13 +3025,10 @@ class GanderGateway:
             )
 
         interaction = permissions[0]
-        # A permission utterance is still a trusted user instruction. Keep it
-        # discoverable through context_fetch even when the native provider's
-        # approval protocol can carry only a discrete allow/deny value.
+        # Preserve the user's permission utterance for later context retrieval.
         async with self._task_lock(task_id):
             self._link_context_turn(self._owned_task(task_id, owner_id), turn)
-        # Preserve the front-brain action so providers can use their native
-        # one-shot versus session approval choices without lossy translation.
+        # Retain one-shot versus session approval semantics for native providers.
         decision = action
         resolved = await self._resolve_interaction(
             ResolveInteractionCommand(
@@ -3381,15 +3353,10 @@ class GanderGateway:
                 candidates=tuple(item.prompt[:24] for item in pending),
             )
         interaction = pending[0]
-        # The reply text is delivered directly to the blocked Worker, but a pull
-        # provider must also be able to rediscover the trusted Turn later. Keep
-        # that association in the ledger rather than attaching the TurnEnvelope
-        # to the provider message.
+        # Persist the reply association so pull providers can retrieve the turn.
         async with self._task_lock(task_id):
             self._link_context_turn(self._owned_task(task_id, owner_id), turn)
-        # Permission reply: normalize the front-brain's decision. allow_session
-        # additionally grants standing consent for the rest of this session, so
-        # subsequent require_permission actions are allowed without re-asking.
+        # `allow_session` grants consent for subsequent actions in this session.
         norm = (decision or "").strip().lower()
         grant_session = False
         if interaction.kind == "permission":
@@ -3401,7 +3368,7 @@ class GanderGateway:
             elif norm == "deny":
                 resolve_decision = "deny"
             else:
-                resolve_decision = decision  # fall back to natural-language text
+                resolve_decision = decision
         else:
             resolve_decision = decision
         resolved = await self._resolve_interaction(
@@ -3442,11 +3409,7 @@ class GanderGateway:
         return None
 
     def task_slate(self, owner_id: str) -> tuple[TaskSlateEntry, ...]:
-        """Live task slate for the front-brain system prompt: each active task
-        as (name, one-line status). The realtime coordinator refreshes the prompt
-        section from this on change, so the front-brain resolves references by
-        coreference over the current slate rather than from memory.
-        """
+        """Return active task names and status lines for front-brain coreference."""
         entries: list[TaskSlateEntry] = []
         lean = self.mode == "lean"
         for task in self.ledger.list_tasks(owner_id):
@@ -3875,8 +3838,7 @@ class GanderGateway:
         resource_lock = self._resource_locks.setdefault(
             f"{provider.name}\0{resource_key}", asyncio.Lock()
         )
-        # Waiters for one busy workspace must not consume every provider slot
-        # and starve an otherwise-independent Project.
+        # Limit waiters per workspace so independent projects retain provider slots.
         async with resource_lock, slot:
             async with self._task_lock(task_id):
                 if self._closed:
@@ -4336,12 +4298,7 @@ class GanderGateway:
     def _lean_arbitrate(
         self, event: WorkerEvent, capabilities: BackendCapabilities
     ) -> ArbitrationDecision:
-        """Lean-mode delivery: the harness does not classify importance. Every
-        worker event is forwarded to the user; the worker is trusted to only
-        emit at meaningful nodes and to set high-risk when it truly interrupts.
-        Timing is safe_pause by default, interrupt for high-risk. No hold, no
-        milestone subscription, no aggregation. Permission is still enforced:
-        a standing session grant auto-allows, otherwise the user is asked."""
+        """Map lean-mode worker events directly to delivery and permission policy."""
         payload = event.payload
         if isinstance(payload, UpdatePayload):
             timing = (
@@ -4359,8 +4316,7 @@ class GanderGateway:
                 payload.kind == "permission"
                 and event.owner_id in self._standing_allow
             ):
-                # standing grant: auto-allow without asking (reuses the
-                # downstream auto-resolve path keyed on this reason).
+                # Route standing grants through the existing auto-resolve path.
                 return ArbitrationDecision(
                     "safe_pause",
                     interaction_route="coordinator",

@@ -16,12 +16,8 @@ ContextKind = Literal[
     "system",
     "tool_result",
 ]
-# Live perception frames are bounded by a recency window rather than by
-# conversation length: a frame from a minute ago is not context, it is history.
-# Every recency filter must consult these sets instead of naming one kind, or a
-# newly added frame kind silently accumulates forever. The two vocabularies are
-# deliberately separate: ContextEvent.kind says "video_frame" where MediaRef.kind
-# says "frame".
+# Live perception is bounded by recency. ContextEvent and MediaRef use distinct
+# frame-kind vocabularies, both listed here for consistent filtering.
 EPHEMERAL_VISUAL_CONTEXT_KINDS: frozenset[str] = frozenset({"screen", "video_frame"})
 EPHEMERAL_VISUAL_MEDIA_KINDS: frozenset[str] = frozenset({"screen", "frame"})
 

@@ -8,15 +8,10 @@ CONTEXT_NO_PREVIOUS = "context_no_previous"
 
 
 def install_context_no_previous(decoder: Any) -> None:
-    """Patch an upstream MiniCPM-O StreamDecoder for no-previous absolute-RoPE eviction.
+    """Install no-previous absolute-RoPE eviction on a StreamDecoder.
 
-    The upstream ``context`` dispatcher is retained so its unit registration and
-    ``enforce_window_with_context`` call sites continue to run.  Only the unit-drop primitive and
-    feed position calculation change:
-
-    * remove the oldest unit's KV slice without rebuilding or rotating any remaining key;
-    * never insert ``previous:`` tokens;
-    * advance new token positions by the cumulative number of physically removed tokens.
+    The context dispatcher remains unchanged. Eviction removes the oldest unit's KV
+    slice, omits ``previous:`` tokens, and offsets new positions by removed-token count.
     """
     if getattr(decoder, "_context_no_previous_installed", False):
         return

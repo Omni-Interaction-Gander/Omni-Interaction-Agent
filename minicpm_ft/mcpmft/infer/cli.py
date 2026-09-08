@@ -262,7 +262,7 @@ def _run_duplex(config: OfflineConfig) -> dict[str, Any]:
         checkpoint=inference.checkpoint,
         talker_checkpoint=inference.talker_checkpoint,
         strict=inference.strict_checkpoint,
-        # MiniCPM-o's as_duplex() owns Token2wav initialization.
+        # as_duplex() initializes Token2wav.
         init_token2wav=False,
         load_processor=False,
     )

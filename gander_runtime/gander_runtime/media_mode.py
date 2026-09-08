@@ -1,17 +1,7 @@
-"""Per-session media-mode policy for the online duplex service.
+"""Per-session media-mode policy for online duplex inference.
 
-``duplex.media_mode`` selects the mode a session starts in. When
-``duplex.allow_client_video`` is enabled, a session may turn vision on or off
-itself
-through the ``media.mode`` control event. This module owns every decision that
-choice implies, as pure functions, so the transport layer stays a thin dispatch:
-
-  - is client-driven video permitted at all (vision tower + operator policy)
-  - which model-side mode a "video on/off" intent maps to
-  - what the caller must be warned about
-  - what the mode costs per unit
-
-Nothing here touches the model, the network, or session state.
+Pure policy functions combine model capability, deployment settings, client intent,
+source warnings, and per-unit token cost. Transport and session state stay separate.
 """
 from __future__ import annotations
 
@@ -22,29 +12,18 @@ VideoSource = Literal["camera", "screen"]
 VIDEO_SOURCES: tuple[VideoSource, ...] = ("camera", "screen")
 CLIENT_VIDEO_MODES: tuple[MediaMode, ...] = ("omni", "auto")
 
-# One frame serializes to <image> + IMAGE_FEATURE_SIZE placeholders + </image>,
-# matching mcpmft.data.serialize_duplex. The duplex path fixes max_slice_nums=1,
-# so a frame always costs exactly this, whatever its resolution.
+# Duplex vision uses one unsliced frame with IMAGE_FEATURE_SIZE placeholders.
 TOKENS_PER_FRAME = 66
-# <unit> plus the pooled whisper placeholders for one 1s chunk at 16 kHz.
+# `<unit>` plus pooled Whisper positions for one second at 16 kHz.
 TOKENS_PER_AUDIO_UNIT = 11
 
-# The frontbrain has never seen screen recordings or desktop UI: every video row
-# in the training mix is natural footage, and a whole frame is 64 tokens at
-# 448px. Small on-screen text is unreadable, so screen share is a backbrain
-# capability that the frontbrain only sees the gist of.
+# Screen sharing is routed to the back brain; the front brain receives only the
+# 448 px frame representation used for coarse visual context.
 SCREEN_OUT_OF_DISTRIBUTION = "screen_content_out_of_distribution"
 
 
 def vision_available(model: object) -> bool:
-    """Report whether the loaded model can actually embed a frame.
-
-    ``init_vision: false`` (the audio-only serving config) skips building
-    ``vpm``/``resampler`` entirely, so feeding a frame would raise
-    ``AttributeError`` on the model thread. Probing the instance is the only
-    honest signal: the config that built it is not carried on the bundle.
-
-    """
+    """Report whether the loaded model exposes its vision encoder and resampler."""
 
     if model is None:
         return False
@@ -60,12 +39,7 @@ def client_video_allowed(
     media_mode: str,
     allow_client_video: bool,
 ) -> bool:
-    """Report whether a session may turn video on by itself.
-
-    A session that already starts in a vision mode keeps that capability. An
-    audio-first deployment must opt in explicitly, so ``media_mode: voice``
-    alone never gains a video surface.
-    """
+    """Report whether a session may enable video through client control."""
 
     if not vision_ok:
         return False
@@ -73,11 +47,7 @@ def client_video_allowed(
 
 
 def resolve_target_mode(*, want_video: bool, client_video_mode: str) -> MediaMode:
-    """Map a client's video on/off intent to a model-side media mode.
-
-    Clients send intent rather than a mode so policy stays server-side and a
-    client can never select a costlier mode than the operator allowed.
-    """
+    """Map client video intent to the configured model-side media mode."""
 
     if not want_video:
         return "voice"
@@ -87,7 +57,7 @@ def resolve_target_mode(*, want_video: bool, client_video_mode: str) -> MediaMod
 
 
 def source_warnings(source: object) -> tuple[str, ...]:
-    """Return the honest caveats for one video source."""
+    """Return capability warnings for a video source."""
 
     return (SCREEN_OUT_OF_DISTRIBUTION,) if source == "screen" else ()
 
@@ -97,13 +67,7 @@ def estimated_tokens_per_unit(
     media_mode: str,
     speak_text_tokens_per_unit: int,
 ) -> int:
-    """Estimate the KV cost of one unit, so the caller can surface it.
-
-    Context eviction is unit-counted, not token-counted, so a vision session
-    silently multiplies the KV window. Reporting the number lets an operator
-    lower ``duplex.context_max_units`` deliberately instead of discovering the cost
-    as latency.
-    """
+    """Estimate per-unit KV tokens for the selected media mode."""
 
     tokens = TOKENS_PER_AUDIO_UNIT + max(int(speak_text_tokens_per_unit), 0)
     if media_mode != "voice":

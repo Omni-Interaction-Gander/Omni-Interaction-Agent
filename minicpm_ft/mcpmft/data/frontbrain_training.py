@@ -25,10 +25,8 @@ VISIBLE_TASK_LIFECYCLE_CONTRACT = "visible_task_lifecycle_v1"
 def replay_visible_task_lifecycle(sample: OmniSample) -> dict[str, Any]:
     """Replay task identity from native calls and their actual responses.
 
-    The response to ``task_start`` owns the assigned display name.  A differing
-    name is valid only when Runtime deterministically suffixes a visible collision;
-    every later send, resolve, receipt event, and Worker delivery must use that
-    assigned name rather than the model's originally proposed name.
+    The ``task_start`` response owns the assigned display name. Later task actions,
+    receipts, and worker deliveries use that name.
     """
 
     active: dict[str, set[str]] = {}
@@ -248,8 +246,7 @@ def replay_visible_task_lifecycle(sample: OmniSample) -> dict[str, Any]:
             and name == "task_resolve"
             and arguments.get("action") == "cancel"
         ):
-            # Runtime acknowledges cancellation synchronously but the task
-            # remains active/cancelling until its final worker delivery.
+            # Cancellation remains active until the final worker delivery.
             pass
 
     for turn_index, turn in enumerate(sample.turns):
@@ -295,10 +292,8 @@ def replay_visible_task_lifecycle(sample: OmniSample) -> dict[str, Any]:
             continue
 
         if not isinstance(response, Mapping):
-            # Direct business tools may legally return any JSON value (for
-            # example a number, string, or list).  This replay owns only the
-            # task lifecycle, so consume a single pending non-task response
-            # without imposing the task-control response object contract.
+            # Direct business tools may return any JSON value; consume one pending
+            # non-task response without applying the task-control schema.
             if (
                 len(pending) == 1
                 and str(pending[0][1].get("name") or "") not in TASK_TOOL_NAMES
@@ -344,11 +339,8 @@ def replay_visible_task_lifecycle(sample: OmniSample) -> dict[str, Any]:
 def analyze_visible_task_context(sample: OmniSample) -> dict[str, Any]:
     """Describe whether the current task action is grounded in visible history.
 
-    A static task slate is a valid runtime input, but some training releases deliberately disable
-    it. In that mode every active task in the bound pre-action harness state must be recoverable
-    from earlier native calls and their synchronous responses in the same sample, not only the
-    task referenced by the current target. Natural-language acknowledgements are not task identity
-    because the harness never parses them as state.
+    Without a static task slate, active task identity comes from earlier native calls and
+    synchronous responses in the sample. Natural-language acknowledgements are not state.
     """
 
     bound_task_names = [
@@ -426,9 +418,7 @@ def analyze_visible_task_context(sample: OmniSample) -> dict[str, Any]:
             and call_name == "task_resolve"
             and arguments.get("action") == "cancel"
         ):
-            # The receipt only confirms that cancellation was accepted.
-            # Runtime keeps the task visible as active/cancelling until the
-            # final worker delivery transitions it into recent terminal.
+            # The cancellation receipt precedes the final worker delivery.
             pass
 
     context_end = current_index if current_index is not None else len(sample.turns)
@@ -621,10 +611,8 @@ def validate_frontbrain_training_sample(
 ) -> Counter[str]:
     """Validate one row before native front-brain serialization.
 
-    Raw ordinary audio-video Omni and speech rows may omit tools in their immutable manifests.
-    The training collator materializes the complete task-tools face on every row before calling
-    this validator. Any row that exposes tools must use that exact face, while optional bounded
-    direct tools may be present beside it.
+    The collator adds the task-tool schemas to ordinary rows. Direct business tools may
+    appear beside that fixed task-tool interface.
     """
 
     if protocol == "none":
@@ -679,10 +667,7 @@ def validate_frontbrain_training_sample(
         call_counts.update(call["name"] for call in validation.calls)
     task_context = analyze_visible_task_context(sample)
     task_lifecycle = replay_visible_task_lifecycle(sample)
-    # A task that is present only in a sample-pinned SLATE is valid while pinned
-    # context is enabled.  Report the more actionable hidden-state error below
-    # when the run deliberately disables that context instead of failing early
-    # with the generic visible-lifecycle diagnostic.
+    # Tasks may be visible only through a sample-pinned SLATE.
     lifecycle_issues = list(task_lifecycle["issues"])
     hidden_lifecycle_codes = {
         "successful_task_reference_not_visible",

@@ -4,8 +4,7 @@ const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
 const BUFFER_SIZE = 4096;
 const WS_CONNECT_TIMEOUT_MS = 120000;
-// Keep a short queue so normal inference and network jitter is not audible at
-// every one-second PCM packet boundary.
+// Short playback buffer for one-second PCM packet boundaries.
 const PLAYBACK_PREROLL_SECONDS = 0.2;
 const PLAYBACK_UNDERRUN_GUARD_SECONDS = 0.04;
 const PLAYBACK_STALE_TURN_SECONDS = 1.5;
@@ -403,7 +402,7 @@ function removeStoredArchive(id) {
   try {
     localStorage.removeItem(historyItemKey(id));
   } catch (_) {
-    // Keep the in-memory index usable when storage is unavailable.
+    // Retain the in-memory index when storage is unavailable.
   }
 }
 
@@ -450,7 +449,7 @@ function clearStoredHistory() {
       }
     }
   } catch (_) {
-    // The visible history is still cleared when storage is unavailable.
+    // Clear visible history independently of storage.
   }
   historyIndex = [];
   volatileHistoryArchives = [];
@@ -843,7 +842,7 @@ function stopPlayback() {
     try {
       source.stop();
     } catch (_) {
-      // A source may have completed between iteration and stop().
+      // Sources may complete before stop().
     }
   }
   playbackSources.clear();
@@ -922,7 +921,7 @@ async function checkRuntime() {
 }
 
 function handleServerEvent(message) {
-  // Video owns its own control replies; app.js must not treat them as unknown.
+  // Video handles its own control replies.
   if (window.GanderVideo?.handleServerEvent(message)) return;
   if (message.type === 'ready') {
     playbackGeneration = Number(message.generation_id) || 0;
@@ -960,9 +959,7 @@ function handleServerEvent(message) {
   }
   if (message.type === 'playback.cancel') {
     const cancelledAtGeneration = Number(message.generation_id) || 0;
-    // The Talker pump and Thinker response use separate producer tasks. A
-    // delayed cancellation from an older generation must not roll the browser
-    // back after a newer text/audio generation has already arrived.
+    // Ignore delayed cancellation from older Talker generations.
     if (cancelledAtGeneration && cancelledAtGeneration < playbackGeneration) return;
     playbackGeneration = cancelledAtGeneration || playbackGeneration + 1;
     if (pendingBinaryAudio) pendingBinaryAudio.accepted = false;
@@ -1028,7 +1025,7 @@ function handleServerEvent(message) {
       const startsAssistantTurn = !assistantMessage;
       if (startsAssistantTurn) {
         closeAsrTurnAtModelBoundary();
-        // Detached Talker audio is keyed by output unit_id, not the global step index.
+        // Detached Talker audio is keyed by output unit_id.
         assistantAudioFloorUnit = Number(message.unit_id) || 0;
         if (playbackQueueLead() > PLAYBACK_STALE_TURN_SECONDS) stopPlayback();
       }
@@ -1123,7 +1120,7 @@ async function requestJson(path, options = {}) {
   try {
     payload = await response.json();
   } catch (_) {
-    // A proxy error page is represented by the HTTP status below.
+    // HTTP status captures proxy error pages.
   }
   if (!response.ok) throw new Error(payload.message || `HTTP ${response.status}`);
   return payload;
@@ -1526,8 +1523,7 @@ async function stopMic() {
 
 async function start() {
   if (sessionState !== 'idle') return;
-  // Unlock output audio before any await can consume the click's user gesture.
-  // This is especially important when screen sharing opens a permission prompt.
+  // Unlock audio within the Start gesture.
   ensurePlaybackContext();
   const hasConversation = snapshotTranscript().length > 0;
   archiveCurrentConversation();
@@ -1544,8 +1540,7 @@ async function start() {
   void checkAsr();
 
   try {
-    // Screen share must be requested while this click is still the active user
-    // gesture; the handshake below would outlive it.
+    // Request screen sharing within the Start gesture.
     await window.GanderVideo?.preacquireIfNeeded();
     if (sessionState !== 'starting' || stopping) {
       await window.GanderVideo?.stop();

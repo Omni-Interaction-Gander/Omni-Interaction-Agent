@@ -12,9 +12,7 @@ MODULE_PATHS = {
     "audio_encoder": ["apm"],
     "audio_proj": ["audio_projection_layer", "audio_avg_pooler"],
     "llm": ["llm"],
-    # projector_spk is used only to encode a reference speaker at inference; the current
-    # teacher-forced Talker loss has no speaker-embedding target/path, so leaving it trainable
-    # creates an unused DDP parameter and saves an unchanged tensor in every checkpoint.
+    # projector_spk is inference-only and remains frozen during teacher forcing.
     "tts_proj": ["tts.projector_semantic", "tts.emb_text"],
     "tts_decoder": ["tts.model", "tts.emb_code", "tts.head_code"],
 }
@@ -70,9 +68,7 @@ def apply_freeze(model, args: FreezeArguments) -> dict[str, int]:
             group_count += set_module_trainable(resolve_attr(core, dotted), trainable)
         touched[group] = group_count
 
-    # MiniCPMTTS always supplies ``inputs_embeds`` to its internal LlamaModel. Its vocabulary
-    # embedding is therefore never called by either teacher forcing or vendor generation. Keep it
-    # frozen even when the decoder is tuned so DDP has no needlessly trainable unused parameter.
+    # MiniCPMTTS supplies inputs_embeds directly, so its vocabulary embedding remains frozen.
     unused_decoder_embedding = set_module_trainable(
         resolve_attr(core, "tts.model.embed_tokens"),
         False,

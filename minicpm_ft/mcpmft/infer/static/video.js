@@ -1,21 +1,12 @@
 'use strict';
 
-// Camera / screen capture for the duplex console.
-//
-// The frontbrain consumes exactly one capture-time-aligned frame per model unit.
-// Frames are encoded to match the training contract: 1 Hz, fit inside 448px, JPEG.
-//
-// The visible preview is the encoded canvas rather than the raw camera stream, so
-// what the user sees is what the frontbrain actually receives. A crisp raw preview
-// would imply the model can read small on-screen text, which it cannot.
-//
-// The whole surface stays hidden unless health/session capabilities advertise
-// client video, so an audio-only deployment is unchanged.
+// Camera and screen capture for duplex inference. Frames follow the training
+// contract: capture-time aligned, 1 Hz, JPEG, and fitted within 448 px.
 
 (function () {
-  const FIT = 448; // matches the training frame size
+  const FIT = 448;
   const JPEG_QUALITY = 0.7;
-  const PREVIEW_HZ = 5; // redraw rate; sending stays at the unit rate
+  const PREVIEW_HZ = 5;
   const MODE_ACK_TIMEOUT_MS = 5000;
   const FRAME_ACK_TIMEOUT_MS = 5000;
   const STORAGE_KEY = 'minicpm-video-source';
@@ -32,7 +23,7 @@
 
   const context = canvas.getContext('2d', { alpha: false });
 
-  let host = null; // { sendControl, addEvent }
+  let host = null;
   let runtimeCapabilities = null;
   let capabilities = null;
   let screenConfig = null;
@@ -203,7 +194,7 @@
 
   async function sendFrame({ awaitAcceptance = false } = {}) {
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
-    // Never queue behind a slow uplink: a late frame is worth less than a fresh one.
+    // Keep at most one frame in flight.
     if (lastFrameBytes && socket.bufferedAmount > lastFrameBytes * 2) return false;
     const capturedAtMs = Date.now();
     const blob = await encode();
@@ -216,8 +207,7 @@
       socket.send(JSON.stringify({
       type: 'screen.frame',
       frame_id: frameId,
-      // Must be wall-clock: the runtime compares this against turn.final
-      // timestamps to decide whether a frame is still recent.
+      // Runtime recency checks use wall-clock timestamps.
       captured_at_ms: capturedAtMs,
       encoding: 'jpeg',
       video_source: activeSource,
@@ -267,12 +257,11 @@
           sending = false;
         }
       }
-      // Refresh on every draw, not only on a send: the note carries the real
-      // encoded size, which is unknown until the first frame is painted.
+      // Refresh the displayed encoded size on every draw.
       if (drawn) updateNote();
       if (activeSource) pacer = window.setTimeout(step, 1000 / PREVIEW_HZ);
     };
-    // The initial frame is sent and acknowledged by enable(); continue at 1 Hz.
+    // enable() sends the initial frame; continue at 1 Hz.
     pacer = window.setTimeout(step, 1000 / PREVIEW_HZ);
   }
 
@@ -320,7 +309,7 @@
         reject(new Error('Screen channel did not become ready'));
       }, MODE_ACK_TIMEOUT_MS);
 
-      // Screen-channel events stay local: app.js treats a generic `error` as fatal.
+      // Screen-channel errors remain local to video controls.
       candidate.onmessage = (event) => {
         if (typeof event.data !== 'string') return;
         let message;
@@ -508,7 +497,7 @@
   }
 
   function onTrackEnded() {
-    // The browser's own "stop sharing" affordance is only observable here.
+    // Observe the browser's native stop-sharing action.
     report('Video source ended');
     revertSelect();
     void disable();
@@ -517,8 +506,7 @@
   async function applySelection() {
     const kind = select.value;
     window.localStorage.setItem(STORAGE_KEY, kind);
-    // Before Start there is no session to negotiate with; the choice is applied
-    // when the session opens, so video is present from the very first unit.
+    // Apply pre-session choices when the session opens.
     if (sessionState !== 'active') return;
     select.disabled = true;
     try {
@@ -540,13 +528,10 @@
   if (stored) select.value = stored;
 
   window.GanderVideo = {
-    // Health is available before a session token. Applying its public
-    // capabilities lets a saved screen-share choice acquire permission inside
-    // the Start click's user gesture.
+    // Health capabilities allow screen permission within the Start gesture.
     applyRuntimeCapabilities(clientVideo) {
       runtimeCapabilities = clientVideo ? { ...clientVideo } : null;
-      // A delayed health response must never replace the authenticated screen
-      // channel installed by ready for an active session.
+      // Keep authenticated session capabilities once ready.
       const available =
         sessionState === 'active' && capabilities
           ? capabilities
@@ -566,7 +551,7 @@
       setState(describe());
     },
 
-    // Reveal the control only when the server says client video is available.
+    // Show controls only when client video is available.
     applyCapabilities(message) {
       const screen = (message && message.screen) || null;
       capabilities = screen && screen.client_video ? { ...screen.client_video } : null;
@@ -597,11 +582,11 @@
 
     async attach(hooks) {
       host = hooks;
-      // Apply a pre-Start selection now that a session exists.
+      // Apply the pre-Start selection.
       if (select.value && !activeSource) await applySelection();
     },
 
-    // Claim the media-mode replies so app.js never sees them.
+    // Handle media-mode replies in this module.
     handleServerEvent(message) {
       if (!message) return false;
       if (message.type === 'media.mode.done') {
@@ -636,8 +621,7 @@
       if (state === 'idle' && activeSource) void disable({ notifyServer: false });
     },
 
-    // getDisplayMedia needs the user gesture that is still live at the top of
-    // start(); by the time the handshake finishes it may be gone.
+    // Request screen permission before the Start gesture expires.
     async preacquireIfNeeded() {
       const generation = lifecycleGeneration;
       const available = runtimeCapabilities || capabilities;

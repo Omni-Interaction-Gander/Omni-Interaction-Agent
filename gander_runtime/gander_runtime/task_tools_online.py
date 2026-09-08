@@ -53,10 +53,8 @@ class TaskToolsOnlineOutput:
 class TaskToolsRealtimeCoordinator:
     """Bind native task tools to one realtime Gateway owner.
 
-    User text is accepted only through an explicit ``turn.final`` transport
-    event. The model's task-tool arguments never carry or rewrite that text.
-    Synchronous control receipts consume the pending tool-response slot, while
-    later worker deliveries enter through a separate Runtime input unit.
+    ``turn.final`` binds user text. Synchronous control receipts use the pending
+    response slot; later worker deliveries enter through separate runtime units.
     """
 
     def __init__(
@@ -143,9 +141,7 @@ class TaskToolsRealtimeCoordinator:
         self._ensure_open()
         self._loop = asyncio.get_running_loop()
         await self.gateway.start()
-        # This is a lightweight lifecycle setter, not a model invocation. Keep
-        # it on the event-loop thread so startup does not depend on executor
-        # wake-up latency before the delivery loop exists.
+        # This lifecycle update runs on the event-loop thread before delivery starts.
         self.session.set_summary_needed_callback(self._on_summary_needed)
         await self._sync_slate(force=True)
         self._delivery_task = asyncio.create_task(
@@ -300,9 +296,7 @@ class TaskToolsRealtimeCoordinator:
                 role="user",
                 kind="audio_transcript",
                 text=final_asr,
-                # Never freeze a reference to the append-only live PCM file:
-                # its bytes would keep changing after task_start. ASR spans are
-                # immutable; sampled screen/image files are immutable as well.
+                # ASR spans and sampled frames are immutable task attachments.
                 media=tuple(
                     item
                     for item in turn.media_refs
@@ -648,9 +642,7 @@ class TaskToolsRealtimeCoordinator:
                 job.cancel()
         if jobs:
             await asyncio.gather(*jobs, return_exceptions=True)
-        # Stop every task that can enter the model lock before making the final
-        # session call. Otherwise the delivery loop can race teardown and keep
-        # WebSocket shutdown waiting behind an in-flight model operation.
+        # Stop model-owning tasks before the final session call and WebSocket teardown.
         try:
             self.session.set_summary_needed_callback(None)
         except Exception:
@@ -787,9 +779,8 @@ class TaskToolsRealtimeCoordinator:
                 try:
                     await self._sync_slate()
                     if delivery.timing == "interrupt":
-                        # A worker interrupt stops the current output, but it must
-                        # not set the persistent client-controlled break flag: the
-                        # very next unit has to consume this delivery.
+                        # Worker interrupts stop current output without setting the
+                        # persistent client break flag.
                         await self._call_session("interrupt_output")
                     response = worker_delivery_response(self.gateway, delivery)
                     key = (

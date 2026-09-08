@@ -20,8 +20,7 @@ DEFAULT_HUMAN_TO_HUMAN_GAP_BANDS = (
     (4, 6, 0.10),
 )
 
-# Disabled by default. Agent profiles opt in so ordinary speech corpora never acquire
-# task-protocol-specific timeline behavior.
+# Agent profiles opt in to task-specific timeline augmentation.
 DEFAULT_PENDING_TASK_GAP_BANDS: tuple[tuple[float, ...], ...] = ()
 
 
@@ -39,22 +38,19 @@ class TimelinePolicy:
     long_gap_bands: Sequence[Sequence[float]] = DEFAULT_LONG_GAP_BANDS
     long_gap_locations: Sequence[str] = ("start", "between", "tail")
     max_long_spans: int = 1
-    # Minimum event-free listen span after a successful task acknowledgement has completely
-    # finished speaking. When a worker delivery exists it is moved after this span; otherwise the
-    # sample receives an equally long pending-task tail. Empty disables the behavior.
+    # Event-free listen span after a task acknowledgement. Worker delivery moves
+    # after the span; pending tasks receive an equivalent tail.
     pending_task_gap_bands: Sequence[
         Sequence[float]
     ] = DEFAULT_PENDING_TASK_GAP_BANDS
-    # Optional post-serialization cap. The collator falls back to the unshifted source timeline
-    # when optional idle gaps would push a sample beyond this many realtime units.
+    # Optional unit cap for idle-gap augmentation.
     max_timeline_units: int | None = None
 
 
 @dataclass(frozen=True)
 class AugmentationProfile:
     name: str
-    # A strong, coherent acoustic scene. When it is not selected, floor_probability can still
-    # supply a quieter continuous room tone; neither layer is gated by user speech activity.
+    # Coherent acoustic scene applied independently of user speech activity.
     background_probability: float = 0.0
     category_weights: Mapping[str, float] = field(
         default_factory=lambda: {"ambient": 1.0}

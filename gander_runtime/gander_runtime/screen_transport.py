@@ -39,9 +39,7 @@ class ScreenFrameHeader:
     asset_id: str | None = None
     display_id: str | None = None
     scale_factor: float | None = None
-    # Which capture surface produced this frame. The model treats both identically;
-    # this only lets the backbrain describe what it is looking at truthfully. A typed
-    # field rather than free-form metadata because the server routes on it.
+    # Capture surface used for routing and back-brain context.
     video_source: ScreenSource | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -128,7 +126,7 @@ def decode_screen_frame(
         )
     try:
         from PIL import Image
-    except ImportError as exc:  # pragma: no cover - installed with MiniCPM vision.
+    except ImportError as exc:  # pragma: no cover
         raise RuntimeError("screen decoding requires Pillow") from exc
 
     try:
@@ -175,19 +173,15 @@ def persist_screen_frame(
     *,
     kind: Literal["screen", "frame"] = "screen",
 ) -> MediaRef:
-    """Persist the encoded source for context/Codex without re-encoding it.
+    """Persist an encoded frame for back-brain context.
 
-    ``kind`` distinguishes a shared screen from a camera frame so the backbrain
-    never narrates a webcam image as the user's screen. The storage layout is
-    shared regardless, so an existing cache stays valid.
+    ``kind`` distinguishes shared-screen and camera frames within one storage layout.
     """
 
     directory = Path(root).expanduser().resolve() / storage_key(session_id) / "screen"
     directory.mkdir(parents=True, exist_ok=True)
     extension = _ENCODING_EXTENSIONS[header.encoding]
-    # asset_id is client metadata, not immutable content identity. A client may
-    # legitimately reuse it for a changing capture surface, so every accepted
-    # frame gets its own path while the original ID stays in MediaRef metadata.
+    # Each frame has a unique path; asset_id remains client metadata.
     filename = f"{header.captured_at_ms}_{uuid.uuid4().hex}{extension}"
     destination = directory / filename
     temporary = directory / f".{filename}.tmp"

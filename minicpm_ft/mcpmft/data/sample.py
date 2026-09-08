@@ -65,8 +65,7 @@ class Turn:
     channel: int | None = None
     turn_state: str | None = None
     word_timestamps: list[tuple[str, int, int]] | None = None
-    # Native MiniCPM tool protocol. Tool actions are assistant turns with one or more complete
-    # calls; tool results are role=tool turns and carry their structured/string payload here.
+    # Native tool actions use assistant turns; results use role=tool turns.
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     tool_response: Any | None = None
     meta: dict[str, Any] = field(default_factory=dict)

@@ -64,8 +64,7 @@ class CPMTrainer(_import_trainer()):
         if "train_loss" in logs:
             completed_steps = int(self.state.global_step) - self._run_start_global_step
             if completed_steps > 0:
-                # Transformers 4.51 divides the current invocation's loss sum by the absolute
-                # global step, which understates train_loss after an exact resume.
+                # Report loss over steps completed by this trainer invocation.
                 logs["train_loss"] = float(self._total_loss_scalar) / completed_steps
         super().log(logs, start_time)
 
@@ -111,9 +110,7 @@ class CPMTrainer(_import_trainer()):
             and self.is_deepspeed_enabled
             and getattr(self, "save_trainable_only", False)
         ):
-            # Validate and load the canonical trainable weights before DeepSpeed restores its
-            # optimizer shards. The later DeepSpeed load is deliberately non-strict because its
-            # compact checkpoint omits frozen Thinker tensors.
+            # Load trainable weights before DeepSpeed restores compact optimizer shards.
             self._load_from_checkpoint(resume_from_checkpoint)
         result = super().train(resume_from_checkpoint, *args, **kwargs)
         corrected = result.metrics.get("train_loss")
@@ -127,9 +124,7 @@ class CPMTrainer(_import_trainer()):
         ):
             return super()._inner_training_loop(*args, **kwargs)
 
-        # Transformers 4.51 only uses non-strict DeepSpeed restore for PEFT models. This project
-        # uses the same compact-checkpoint contract without PEFT, so scope the equivalent behavior
-        # to this Trainer invocation.
+        # Compact checkpoints require non-strict DeepSpeed restore for this invocation.
         import transformers.trainer as trainer_module
 
         original_loader = trainer_module.deepspeed_load_checkpoint
@@ -167,20 +162,16 @@ class CPMTrainer(_import_trainer()):
             lr=lr,
             betas=(self.args.adam_beta1, self.args.adam_beta2),
             eps=self.args.adam_epsilon,
-            # Every parameter group carries its own decay so bias/norm parameters stay exempt.
+            # Each group carries its own weight decay.
             weight_decay=0.0,
         )
         return self.optimizer
 
     def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
-        """Restore canonical MiniCPMO weights into the model inside ``OmniTrainWrapper``.
+        """Restore canonical MiniCPMO weights inside OmniTrainWrapper.
 
-        ``_save`` deliberately writes bare keys such as ``tts.model.*`` so a Talker checkpoint is
-        directly loadable for inference. Hugging Face's default resume path would instead load
-        those keys into ``OmniTrainWrapper`` (which exposes ``model.tts.model.*``), silently leaving
-        the Talker at its base initialization under ``strict=False``. Point the loader at the bare
-        model, and validate trainable-only checkpoints without treating intentionally absent frozen
-        Thinker tensors as an error.
+        Checkpoints store inference-facing keys such as ``tts.model.*``. Resume loads them
+        into the wrapped MiniCPMO and validates the trainable subset separately.
         """
         candidate = self.model if model is None else model
         wrapped_module = getattr(candidate, "module", None)
@@ -227,8 +218,7 @@ class CPMTrainer(_import_trainer()):
 
         original_model = self.model
         try:
-            # Save the bare MiniCPMO, not the OmniTrainWrapper, so from_pretrained/load_state_dict at
-            # inference see canonical keys: llm.*, tts.*, apm.*, ...
+            # Save MiniCPMO with canonical llm.*, tts.*, and apm.* keys.
             self.model = model_to_save
             result = super()._save(output_dir=output_dir, state_dict=state_dict)
         finally:
@@ -249,9 +239,7 @@ class CPMTrainer(_import_trainer()):
                 _internal_call=_internal_call,
             )
 
-        # ZeRO-2 keeps parameters replicated. Export the 319M trainable Talker tensors directly
-        # instead of first gathering all 8.9B parameters only for _save() to discard the frozen
-        # Thinker state.
+        # ZeRO-2 can export replicated trainable Talker tensors directly.
         output_dir = output_dir or self.args.output_dir
         if self.args.should_save:
             self._save(output_dir=output_dir)
@@ -269,8 +257,7 @@ class CPMTrainer(_import_trainer()):
             raise RuntimeError(
                 "Installed DeepSpeed cannot omit frozen parameters from exact-resume checkpoints"
             )
-        # All ranks must participate in a DeepSpeed save. Frozen Thinker tensors are reconstructed
-        # from the validated init checkpoint on resume and must not be duplicated in every shard.
+        # All ranks save optimizer state; frozen Thinker tensors come from init_checkpoint.
         save_checkpoint(output_dir, exclude_frozen_parameters=True)
         if self.args.should_save:
             import torch

@@ -1,32 +1,21 @@
-"""Unified block-driven full-duplex serializer.
+"""Serialize full-duplex interaction on a fixed one-second grid.
 
-Full-duplex means the model perceives a continuous input stream and, on a fixed 1s time grid,
-decides at each block whether to listen, speak, backchannel, or interrupt while STILL receiving
-env-audio (always-on mic).
-The control space is ``listen``/``speak``/``backchannel``/``interrupt`` plus complete native
-tool calls. Runtime task state returns later as masked ``<tool_response>`` context.
+Each unit combines perception input with one action: listen, speak, backchannel,
+interrupt, or a native tool call. Runtime task state re-enters as masked tool-response
+context. The causal order within a unit is:
 
-Per 1s block, in strict causal order (matching MiniCPMODuplex streaming_prefill/generate and the
-official schema `<unit>[audio_embed]<|listen|or|speak|>content</unit>`):
-    <unit>                                              (boundary, not supervised)
-    [video-frame embeddings]                            (perception input, zero or more frames)
-    [env-audio placeholders]                            (perception input, ALWAYS present:
-                                                         real user speech overlapping this block,
-                                                         else 1s silence — always-on mic)
-    [arriving user text]                                (optional text_list input, -100)
-    [arriving tool response(s)]                         (optional structured input, -100)
-    <|listen|> | <|speak|> | <|backchannel|> |
-    <|interrupt|>                                       (dialogue control, SUPERVISED)
-    [K agent text tokens]      (speak blocks)            (SUPERVISED, + per-unit s3 target)
-    [<|turn_eos|>]             (naturally completed text turn only) (SUPERVISED)
-    <|chunk_eos|>              (speak blocks)             (SUPERVISED)
-    </unit>                                              (boundary, not supervised)
+    <unit>
+    [video frames]
+    [microphone audio or silence]
+    [typed text]
+    [runtime tool responses]
+    [action]
+    [K assistant text tokens and per-unit S3 target]
+    [turn EOS and chunk EOS]
+    </unit>
 
-Text is chunked at K tokens/block (fixed-unit streaming). Thinker units are text/control-driven:
-S3 length never creates extra empty-text speak units. If S3 targets are present, each non-final text
-unit receives the next speech_tokens_per_unit codes and the final text unit absorbs every remaining
-code, without a final-unit cap. Length disagreement is alignment metadata, not a reason to discard or
-truncate a speech target.
+Thinker units are determined by text and control tokens. Non-final speak units take the
+configured S3 cadence, while the final unit owns the remaining speech codes.
 """
 from __future__ import annotations
 
@@ -70,7 +59,7 @@ from mcpmft.tokenizer_tools import (
     UNIT_START,
 )
 
-# Shared pure helpers stay in serialize_omniflow (imported by callers too).
+# Shared serialization helpers.
 from mcpmft.data.serialize_omniflow import (
     BACKCHANNEL_CLASS,
     duplex_system_prompt_prefix,
@@ -96,12 +85,10 @@ def split_s3_codes_for_text_units(
     text_units: int,
     speech_tokens_per_unit: int,
 ) -> list[list[int]]:
-    """Split S3 loss targets without dropping codes.
+    """Split S3 targets across text units while preserving their order.
 
-    The first ``text_units - 1`` slices follow the configured streaming cadence. The final text
-    unit owns the complete remainder, whether that remainder is empty, shorter than one nominal
-    unit, or spans several nominal units. This is deliberately asymmetric: Thinker determines the
-    number of conditioning units, while the target waveform determines when Talker predicts EOS.
+    The first units follow the streaming cadence; the final text unit owns the
+    remainder. Thinker sets the conditioning-unit count and Talker predicts EOS.
     """
     if text_units <= 0:
         raise ValueError("text_units must be positive")
@@ -145,7 +132,7 @@ def serialize_duplex_sample(
         if isinstance(block, int) and not isinstance(block, bool) and block >= 0
     }
 
-    # ---- 1. Bucket turns and video frames onto the 1s block grid. ----
+    # Bucket turns and video frames onto the one-second grid.
     agent_buckets: dict[int, list[Turn]] = defaultdict(list)
     env_buckets: dict[int, list[Turn]] = defaultdict(list)
     env_text_by_block: dict[int, list[Turn]] = defaultdict(list)
@@ -208,14 +195,8 @@ def serialize_duplex_sample(
         first = start // block_ms
         last = max(end - 1, start) // block_ms
         if turn.role not in {"assistant", "system"} and turn.text:
-            # Official streaming_prefill accepts text_list beside video/audio. Text is an input
-            # event, not a duration, so expose it exactly once when it arrives.
-            #
-            # A spoken turn is perceived through the microphone ONLY. Feeding its transcript
-            # alongside the audio lets the model read the request instead of listening to it,
-            # which no realtime deployment can reproduce: at inference the runtime has audio and
-            # no transcript. Text arriving as a genuine typed/structured event (no audio on the
-            # same turn) is still a legitimate input channel and stays.
+            # Emit typed text once at arrival. Spoken transcripts remain metadata because
+            # realtime inference observes their audio rather than text.
             if turn.audio_in is None:
                 env_text_by_block[first].append(turn)
         for b in range(first, last + 1):
@@ -241,11 +222,8 @@ def serialize_duplex_sample(
             )
         interrupt_by_block[block] = turn
 
-    # ---- 2. Pre-plan each agent turn into TEXT-DRIVEN speak units ----
-    # Thinker streaming is controlled by text/control tokens: every non-final speak unit carries K
-    # text tokens, and the final unit carries the remaining text plus optional <|turn_eos|>. S3 codes
-    # are attached only as Talker targets and must never create extra empty-text Thinker units. The
-    # final text unit owns all remaining S3 codes; it is not limited to one nominal S3 unit.
+    # Plan each assistant turn into text-driven speak units. Non-final units carry K
+    # text tokens; the final unit carries remaining text, turn EOS, and remaining S3 codes.
     S = int(speech_tokens_per_unit)
     if S <= 0:
         S = K * codes_per_text_token
@@ -341,10 +319,8 @@ def serialize_duplex_sample(
             "interrupt_block": interrupt_block,
         })
 
-    # Assign each turn's speak units to consecutive blocks by default. A materialized corpus may
-    # provide sparse explicit blocks to preserve a known late full-duplex event (for example, an
-    # interruption during a long assistant waveform). Collisions still shift later units forward.
-    speak_by_block: dict[int, dict] = {}   # block_index -> {plan, unit_idx}
+    # Explicit sparse blocks preserve timed full-duplex events; collisions shift later units.
+    speak_by_block: dict[int, dict] = {}
     next_free = 0
     for plan in turn_plans:
         requested = plan["requested_blocks"]
@@ -375,15 +351,14 @@ def serialize_duplex_sample(
         plan["_assigned_start"] = assigned[0]
         plan["_assigned_blocks"] = assigned
         plan["_active_unit_indices"] = active_unit_indices
-        # Planned suffixes at/after an interrupt control are masked counterfactual text, not emitted
-        # speech. They must not delay a later assistant turn after the interrupting user is done.
+        # Counterfactual suffixes after an interrupt do not delay later assistant turns.
         next_free = (
             int(plan["interrupt_block"]) + 1
             if plan["interrupt_block"] is not None
             else assigned[-1] + 1
         )
 
-    # ---- 3. Block grid = 0 .. last block needed by any audio turn / env turn / speak unit ----
+    # Extend the grid through the last perception or speak unit.
     max_block = -1
     for buckets in (agent_buckets, env_buckets):
         if buckets:
@@ -414,7 +389,7 @@ def serialize_duplex_sample(
     if truncate_block is not None:
         blocks_range = [b for b in blocks_range if b <= truncate_block]
 
-    # ---- 4. Emit ----
+    # Emit the serialized timeline.
     input_ids: list[int] = []
     labels: list[int] = []
     image_bounds: list[tuple[int, int]] = []
@@ -430,14 +405,13 @@ def serialize_duplex_sample(
         labels.extend(tids if supervise else [IGNORE_INDEX] * len(tids))
 
     if include_system_prompt:
-        # Match MiniCPMODuplex.prepare(): context mode registers the prefix first, then feeds the
-        # suffix after the future `previous:` insertion point.
+        # Match the prefix/suffix order used by MiniCPMODuplex.prepare().
         emit(_enc(tokenizer, duplex_system_prompt_prefix(resolved_system_prompt)), False)
         if pinned_context:
             emit(_enc(tokenizer, pinned_context), False)
         emit(_enc(tokenizer, duplex_system_prompt_suffix()), False)
 
-    # accumulate speech-unit records keyed by plan id (for SpeechSegment build after emission)
+    # Collect speech-unit records for SpeechSegment construction.
     plan_units: dict[int, list[dict]] = defaultdict(list)
 
     for b in blocks_range:
@@ -461,9 +435,8 @@ def serialize_duplex_sample(
 
         emit([UNIT_START.token_id], False)
 
-        # --- perception: video frames, then microphone audio (official streaming order). ---
-        # MiniCPM-o's low-latency duplex path fixes max_slice_nums=1. Each frame therefore maps to
-        # one overview embedding of IMAGE_FEATURE_SIZE positions and never emits HD slice markers.
+        # Perception order is video frames followed by microphone audio. Each unsliced
+        # frame maps to IMAGE_FEATURE_SIZE positions.
         for image_ref in image_refs_here:
             emit([IMAGE_START.token_id], False)
             image_start = len(input_ids)
@@ -472,9 +445,7 @@ def serialize_duplex_sample(
             image_inputs.append(image_ref)
             emit([IMAGE_END.token_id], False)
 
-        # The microphone remains continuous even when a structured Runtime event arrives.  Audio
-        # placeholders are replaced by get_omni_embedding via audio_bounds; the masked tool
-        # response is appended afterwards at the streaming protocol's optional-text position.
+        # Continuous microphone audio precedes structured runtime events in each unit.
         ref, n = block_mic_audio(env_turns, block_start, block_end, geometry)
         if ref is not None and n > 0:
             ref.source = {
@@ -489,8 +460,7 @@ def serialize_duplex_sample(
             emit([0] * n, False)
             audio_inputs.append(ref)
 
-        # Official per-unit order is frame(s), audio, then optional text inputs. Preserve arriving
-        # user text first, followed by bounded structured responses in their Runtime order.
+        # Per-unit order: frames, audio, user text, then structured runtime responses.
         text_events = [turn.text or "" for turn in text_inputs_here]
         for turn in tool_responses_here:
             value = (
@@ -502,14 +472,14 @@ def serialize_duplex_sample(
         if text_events:
             emit(_enc(tokenizer, "\n".join(text_events)), False)
 
-        # --- fifth native action branch: a complete tool call is silent and never reaches Talker. ---
+        # Native tool calls form silent action units.
         if tool_action_here is not None:
             structured_start = len(input_ids)
             emit(_enc(tokenizer, format_tool_calls(tool_action_here.tool_calls)), True)
             structured_spans.append((structured_start, len(input_ids)))
             emit([CHUNK_EOS.token_id], True)
         else:
-            # --- dialogue control. Interrupt owns the complete control-only unit. ---
+            # Interrupt occupies a complete control-only unit.
             if interrupt_here is not None:
                 ls = INTERRUPT_CONTROL
             elif speak_here is not None:
@@ -519,7 +489,7 @@ def serialize_duplex_sample(
                 ls = "listen"
             emit([control_token_id(ls, tokenizer)], True)
 
-        # --- speak unit: K text tokens (final may be shorter) + turn_eos on final ---
+        # Speak unit: K text tokens, with turn EOS on the final unit.
         if speak_here is not None:
             plan = speak_here["plan"]
             u = speak_here["unit_idx"]
@@ -552,7 +522,7 @@ def serialize_duplex_sample(
 
         emit([UNIT_END.token_id], False)
 
-    # ---- 5. One SpeechSegment per speak unit; same turn shares turn_group (continuous talker KV) ----
+    # Build one SpeechSegment per speak unit; each turn shares Talker KV.
     for plan in turn_plans:
         turn = plan["turn"]
         if turn.speech_out is None:
@@ -578,7 +548,7 @@ def serialize_duplex_sample(
             )
 
 
-    # ---- 5. Left-truncate to max_seq_length (drop earliest tokens; keep alignment) ----
+    # Left-truncate while preserving modality alignment.
     if len(input_ids) > max_seq_length:
         offset = _left_truncation_offset(input_ids, max_seq_length, UNIT_START.token_id)
         if any(start < offset < end for start, end in structured_spans):
@@ -599,8 +569,7 @@ def serialize_duplex_sample(
         **sample.meta,
         "caps": sample.caps.__dict__,
         "paradigm": paradigm,
-        # Keep the exact rendered prompt, including per-row tool schemas. Sliding-context
-        # reconstruction must not fall back to the unexpanded base prompt stored by materializers.
+        # Retain the rendered prompt and its per-row tool schemas for context reconstruction.
         "duplex_system_prompt": resolved_system_prompt,
     }
     if pinned_context:

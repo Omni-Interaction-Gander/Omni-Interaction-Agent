@@ -65,11 +65,10 @@ def audio_placeholder_len(num_samples: int, geometry: AudioGeometry | None = Non
 
 
 def audio_placeholder_len_raw(num_samples: int, geometry: AudioGeometry | None = None) -> int:
-    """Unclamped placeholder length, EXACTLY matching processor.get_audio_placeholder.
+    """Return the unclamped processor placeholder length.
 
-    Can be 0 or negative for very short audio (e.g. a <100ms residual block window). Callers
-    must skip the segment when this is <= 0 — the processor would emit zero <unk> there, so a
-    clamped-to-1 placeholder would mismatch the (empty) feature and crash the scatter.
+    Very short residual windows may produce a non-positive value and are omitted to
+    keep placeholder and feature counts aligned.
     """
     geometry = geometry or AudioGeometry()
     frames = math.ceil(num_samples / geometry.hop_length)
@@ -81,8 +80,7 @@ def audio_placeholder_for_duration_ms(duration_ms: int, geometry: AudioGeometry 
     geometry = geometry or AudioGeometry()
     num_samples = int(duration_ms * geometry.sample_rate / 1000)
     n_audio_tokens = audio_placeholder_len(num_samples, geometry)
-    # Turn/offline serialization still uses the processor-style <|audio_start|>...</|audio_end|>
-    # wrapper. Duplex streaming serialization builds audio_bounds explicitly and uses bare fillers.
+    # Turn serialization uses audio wrappers; duplex streaming uses explicit bounds.
     return [AUDIO_START.token_id] + [0] * n_audio_tokens + [AUDIO_END.token_id]
 
 
@@ -115,11 +113,9 @@ def load_audio_16k_mono(path: str, *, start_ms: int | None = None, end_ms: int |
 
 
 def load_audio_ref_waveform(audio_ref) -> "np.ndarray":
-    """Load a 16k mono float32 waveform honoring channel selection and time slice.
+    """Load a sliced 16 kHz mono waveform from files or embedded audio.
 
-    Handles: parquet-embedded bytes, multichannel files (selects audio_ref.channel
-    instead of averaging — critical for full-duplex env-audio vs agent separation),
-    time slicing by start_ms/end_ms, and resampling to 16k.
+    Multichannel sources use audio_ref.channel to preserve full-duplex channel roles.
     """
     import numpy as np
 
@@ -147,9 +143,7 @@ def load_audio_ref_waveform(audio_ref) -> "np.ndarray":
                 mixed[offset : offset + take] += wav[:take]
         return mixed
     if source.get("kind") == "silence":
-        # Always-on mic: a block with no real user speech still feeds ~1s of (near-)silence audio,
-        # matching official streaming where each chunk feeds `<unit>` plus audio embeddings before
-        # predicting listen/speak. Duration comes from start_ms/end_ms.
+        # Always-on microphone blocks include their silent duration.
         start_ms = getattr(audio_ref, "start_ms", None) or 0
         end_ms = getattr(audio_ref, "end_ms", None)
         dur_ms = (end_ms - start_ms) if end_ms is not None else 1000
@@ -222,11 +216,11 @@ def load_audio_ref_waveform(audio_ref) -> "np.ndarray":
         table = pq.read_table(source["parquet"], columns=[col])
         cell = table.to_pylist()[int(source["row"])][col]
         if isinstance(cell, dict) and cell.get("array") is not None:
-            # HF Audio decoded form: raw float samples + sampling_rate (e.g. UltraChat).
+            # Hugging Face Audio decoded form.
             wav = np.asarray(cell["array"], dtype=np.float32)
             sr = int(cell.get("sampling_rate") or audio_ref.sample_rate or 16000)
         else:
-            # Encoded bytes form (e.g. VoiceAssistant / LibriSpeech).
+            # Encoded audio bytes.
             audio_bytes = cell["bytes"] if isinstance(cell, dict) else cell
             wav, sr = sf.read(io.BytesIO(audio_bytes))
     else:
@@ -256,7 +250,7 @@ def load_audio_ref_waveform(audio_ref) -> "np.ndarray":
         already_sliced = True
     wav = np.asarray(wav, dtype=np.float32)
 
-    # Channel selection: pick the named channel for multichannel sources; else mono-mix.
+    # Select a named channel or mix to mono.
     if wav.ndim > 1:
         ch = getattr(audio_ref, "channel", None)
         if ch is not None and ch < wav.shape[1]:
@@ -264,7 +258,7 @@ def load_audio_ref_waveform(audio_ref) -> "np.ndarray":
         else:
             wav = wav.mean(axis=1)
 
-    # Time slice (at native sr, before resample).
+    # Slice at the native sample rate before resampling.
     start_ms = getattr(audio_ref, "start_ms", None)
     end_ms = getattr(audio_ref, "end_ms", None)
     if not already_sliced and (start_ms is not None or end_ms is not None):
@@ -272,10 +266,7 @@ def load_audio_ref_waveform(audio_ref) -> "np.ndarray":
         e = None if end_ms is None else int(end_ms * sr / 1000)
         wav = wav[s:e]
 
-    # A block-sliced env-audio window can land past the file's real end (or round to <1 sample),
-    # yielding an empty/too-short slice that resampy refuses to resample. The placeholder length was
-    # sized from the window duration, so an out-of-range slice is represented by the same amount
-    # of silence. The resampler also requires at least two input samples.
+    # Represent empty or one-sample windows as duration-matched silence.
     if end_ms is not None:
         want_16k = max(int((end_ms - (start_ms or 0)) * 16000 / 1000), 1)
     else:
@@ -293,12 +284,7 @@ def load_audio_ref_waveform(audio_ref) -> "np.ndarray":
             down=int(sr) // divisor,
         ).astype(np.float32)
 
-    # Partial overhang: a bounded window whose end lands PAST the file's real end returns a slice
-    # SHORTER than the window duration.
-    # The placeholder count was sized from the window DURATION (want_16k), so pad the residual with
-    # trailing silence to want_16k — otherwise the collator's pooled frame count < placeholder and
-    # get_omni_embedding's scatter crashes (e.g. nominal 1s window over a file ending mid-window).
-    # Only pads (never truncates real content); this stems from source meta duration > real audio.
+    # Pad partial overhang with trailing silence to match the placeholder duration.
     if end_ms is not None and len(wav) < want_16k:
         wav = np.pad(wav, (0, want_16k - len(wav)))
     return wav
@@ -386,7 +372,7 @@ def block_env_audio(turn, block_start_ms, block_end_ms, geometry=None):
     num_samples = int((win_end - win_start) * geometry.sample_rate / 1000)
     n = audio_placeholder_len_raw(num_samples, geometry)
     if n <= 0:
-        return None, 0  # residual window too short to yield any whisper frame; skip
+        return None, 0
     return ref, n
 
 

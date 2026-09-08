@@ -193,9 +193,7 @@ def ensure_lean_task_tools(
             raise ToolProtocolError(
                 f"existing {schema['name']} schema does not match the lean protocol"
             )
-    # Keep source business-tool order, but always canonicalize the task face to one exact
-    # trailing trio. The augmentation path reserves capacity from the tail, and runtime and
-    # training must therefore agree even when an imported manifest listed task schemas first.
+    # Preserve business-tool order and canonicalize the task tools as a trailing trio.
     expected_names = {schema["name"] for schema in expected}
     business_tools = [tool for tool in normalized if tool["name"] not in expected_names]
     return [*business_tools, *expected]
@@ -504,7 +502,5 @@ def _normalize_schema(value: Any) -> Any:
 
 
 def _escape_protocol_openers(text: str) -> str:
-    # JSON decoders restore ``\u003c`` inside tool-call arguments. For arbitrary tool-result text,
-    # preserving the escaped spelling is preferable to allowing untrusted output to close the
-    # structural span early.
+    # Preserve escaped angle brackets as protocol text.
     return text.replace("<", "\\u003c")

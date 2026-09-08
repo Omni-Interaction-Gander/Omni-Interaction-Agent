@@ -33,18 +33,10 @@ class GanderDuplexSession:
         self.screen_frames.publish(frame)
 
     def set_media_mode(self, mode: str) -> str:
-        """Switch vision on or off at a model-clock boundary; return the old mode.
+        """Switch vision at a model-unit boundary and return the previous mode.
 
-        ``DuplexLiveSession`` re-reads ``config.media_mode`` for every unit, so
-        this needs no session rebuild: the live KV cache, prefix snapshot, tools
-        and Talker state all stay valid and vision simply starts or stops
-        contributing frame tokens from the next unit onward.
-
-        Holding the model lock makes the mode change and the buffer reset atomic
-        with respect to unit generation. The order between them differs by
-        direction: turning vision off must stop consumption before dropping the
-        frames, and turning it on must drop stale frames before consumption can
-        reach them.
+        The model lock makes configuration and frame-buffer reset atomic. Vision-off
+        updates the mode before reset; vision-on resets frames before enabling them.
         """
 
         if mode not in {"voice", "omni", "auto"}:

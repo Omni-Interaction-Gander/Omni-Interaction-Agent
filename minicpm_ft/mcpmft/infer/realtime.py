@@ -173,9 +173,8 @@ class DuplexStepEvent:
 class DuplexLiveSession:
     """Stateful single-browser live session backed by MiniCPMODuplex.
 
-    The official duplex wrapper keeps KV/audio/token2wav state on the wrapper/model, so this object
-    is intentionally single-session. A server should serialize access or run one model process per
-    session when true concurrency is needed.
+    MiniCPMODuplex stores KV, audio, and Token2wav state on the model, so one instance
+    serves one active model session.
     """
 
     def __init__(
@@ -334,9 +333,8 @@ class DuplexLiveSession:
         if self.speech_worker is None and not self.talker_state()["drained"]:
             return True
         if getattr(self, "_assistant_turn_open", False):
-            # Detached speech generation must not hide the Thinker's unfinished semantic turn.
-            # Keep advancing the always-on microphone timeline until the Thinker emits turn EOS;
-            # then wait for the already queued Talker work without feeding redundant silence.
+            # Advance the microphone timeline until the Thinker emits turn EOS, then
+            # wait for queued detached Talker output.
             return True
         if not self.awaiting_reply:
             return False
@@ -431,10 +429,8 @@ class DuplexLiveSession:
     def feed_runtime_event(self, event: Any) -> None:
         """Queue one asynchronous Runtime event for the next media input unit.
 
-        A worker delivery is chronologically separate from the synchronous
-        response to the task tool that started or updated the worker.  It uses
-        the same bounded ``<tool_response>`` wire envelope used by training,
-        but it must never consume an outstanding tool-call response slot.
+        Worker deliveries use the training ``<tool_response>`` envelope and a slot
+        separate from synchronous task-tool responses.
         """
 
         self._ensure_open()
@@ -459,7 +455,7 @@ class DuplexLiveSession:
         )
         prefill_kwargs: dict[str, Any] = {"audio_waveform": waveform}
         if frame_list:
-            # The official duplex API combines video and audio in one 1 Hz timeline unit.
+            # Duplex units combine video and one second of audio.
             prefill_kwargs.update(
                 frame_list=frame_list,
                 max_slice_nums=self.config.max_slice_nums,
@@ -526,8 +522,7 @@ class DuplexLiveSession:
                 out["tool_error"] = "a previous tool call is still awaiting its response"
                 out["tool_response_expected"] = False
             else:
-                # Even a malformed call gets exactly one bounded error response so the model can
-                # recover from the structurally completed tool unit.
+                # Return one bounded result for a structurally complete malformed call.
                 self._tool_response_pending = True
                 out["tool_response_expected"] = True
         is_listen = bool(out.get("is_listen", True))
@@ -670,7 +665,7 @@ class DuplexLiveSession:
         try:
             if callable(get_stats):
                 stats = get_stats()
-        except Exception:  # pragma: no cover - optional upstream diagnostics.
+        except Exception:  # pragma: no cover
             LOGGER.debug("failed to collect decoder window stats", exc_info=True)
         config = stats.get("config") or getattr(decoder, "_window_config", None)
 

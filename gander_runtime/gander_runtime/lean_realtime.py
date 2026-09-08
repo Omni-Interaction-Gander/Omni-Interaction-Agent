@@ -1,15 +1,7 @@
-"""Native task-tools front-brain contract.
+"""Native front-brain contract for task_start, task_send, and task_resolve.
 
-The only front-brain face is ``task_start``, ``task_send`` and ``task_resolve``.
-This module owns that contract, decoupled from any specific realtime session so
-it is wired into ``online_duplex`` as the realtime control surface:
-
-  - the tool schema exposed to the front-brain,
-  - parsing each native task-tool call into bounded arguments,
-  - driving the corresponding Gateway method and turning the synchronous result
-    into a bounded ``<tool_response>`` payload the front-brain consumes,
-  - rendering the live task slate for the system prompt (refreshed on change).
-
+The module defines schemas, parses calls, dispatches Gateway operations, formats
+tool responses, and renders the live task slate independently of the transport.
 """
 from __future__ import annotations
 
@@ -108,12 +100,9 @@ def parse_task_resolve_call(
 
 
 def control_tool_response(result: TaskControlResult) -> dict[str, Any]:
-    """Bounded, structured <tool_response> for the front-brain.
+    """Format a bounded task result for front-brain phrasing.
 
-    Facts only — no scripted speech. The front-brain (a language model) phrases
-    the outcome itself; the harness must not put words in its mouth. It carries
-    the control outcome (status), the task handles, disambiguation candidates,
-    and any synchronous content (e.g. an `ask` answered from the ledger).
+    The payload carries status, task handles, candidates, and synchronous content.
     """
 
     payload: dict[str, Any] = {
@@ -125,8 +114,7 @@ def control_tool_response(result: TaskControlResult) -> dict[str, Any]:
     if result.reason_key:
         payload["reason"] = result.reason_key
     if result.speech:
-        # Synchronous content the front-brain should convey (an `ask` answer
-        # from the ledger, or a newly-assigned task name), not a phrasing.
+        # Content for the front brain to convey, not a prescribed phrasing.
         payload["content"] = result.speech
     return payload
 
@@ -195,9 +183,7 @@ class TaskToolHandler:
     ) -> None:
         self._gateway = gateway
         self._owner_id = owner_id
-        # Provider routing is deployment policy, not a model-controlled tool
-        # argument. Supplying it here keeps the three-tool face text-free while
-        # allowing a lean Gateway to host more than one backend.
+        # Provider routing is deployment policy rather than a model argument.
         self._provider_name = provider_name
 
     async def handle_task_start(
@@ -312,9 +298,7 @@ class TaskToolHandler:
         return tuple(schemas)
 
     def system_prompt_slate(self) -> str:
-        """Current task slate, rendered for the system prompt. The realtime loop
-        refreshes the prompt's task section from this on change so the
-        front-brain resolves references by coreference over the live list."""
+        """Render the current task slate for system-prompt reference resolution."""
 
         return render_task_slate(
             self._gateway.task_slate(self._owner_id),

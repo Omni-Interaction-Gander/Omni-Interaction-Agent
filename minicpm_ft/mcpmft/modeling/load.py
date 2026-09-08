@@ -179,9 +179,7 @@ def load_minicpmo_model(args: ModelArguments, *, init_token2wav: bool = True):
         kwargs["device_map"] = args.device_map
     LOGGER.info("Loading MiniCPM-o model from %s", args.model_name_or_path)
     model = AutoModel.from_pretrained(args.model_name_or_path, **kwargs)
-    # Training uses the non-streaming audio scatter path (supports batch_size > 1). The model
-    # ships with config.stream_input=True for real-time inference, which forces bs==1 in
-    # get_omni_embedding; disable it for batched training.
+    # Batched training uses the non-streaming audio scatter path.
     if args.train_disable_stream_input and model.config.stream_input:
         model.config.stream_input = False
         LOGGER.info("Set config.stream_input=False for batched training")
@@ -285,8 +283,7 @@ def load_prefixed_state_dict(model, checkpoint_path: str | Path, *, prefix: str)
             f"Checkpoint {checkpoint_path} has no tensors with required prefix {prefix!r}"
         )
     missing, unexpected = model.load_state_dict(subset, strict=False)
-    # With strict=False, `missing` lists every param not in `subset` (expected here); we only
-    # care that the prefixed keys actually matched, i.e. none of them landed in `unexpected`.
+    # With strict=False, only unexpected subset keys indicate a prefix mismatch.
     stray = [k for k in unexpected if k.startswith(prefix)]
     if stray:
         raise RuntimeError(f"{len(stray)} '{prefix}' tensors did not match model params, e.g. {stray[:3]}")
@@ -405,7 +402,7 @@ def describe_model_args(args: ModelArguments) -> dict[str, Any]:
 
 
 def add_native_frontbrain_tokens(model, tokenizer) -> dict[str, int]:
-    """Add only interaction controls absent from the official MiniCPM-o vocabulary."""
+    """Add interaction controls absent from the MiniCPM-o vocabulary."""
 
     from mcpmft.tokenizer_tools import NATIVE_FRONTBRAIN_TOKENS
 
@@ -422,9 +419,7 @@ def _add_special_tokens(model, tokenizer, token_texts: list[str]) -> dict[str, i
         tokenizer.add_special_tokens({"additional_special_tokens": missing})
         target = model.llm
         old = target.get_input_embeddings().weight.shape[0]
-        # The new rows are overwritten with the existing embedding mean below.
-        # Disable Transformers' covariance-based mean initialization, which is
-        # both redundant here and very expensive for large hidden dimensions.
+        # New rows receive the existing embedding mean below.
         target.resize_token_embeddings(len(tokenizer), mean_resizing=False)
         _mean_init_new_rows(target, old, len(tokenizer))
     return {text: int(tokenizer.convert_tokens_to_ids(text)) for text in token_texts}

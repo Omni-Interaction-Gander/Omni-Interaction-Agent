@@ -42,19 +42,11 @@ def build_sampled_context_window(
     system_prompt: str = GANDER_DUPLEX_SYSTEM_PROMPT,
     previous_marker: str = "\n\nprevious: ",
 ) -> SerializedSample:
-    """Materialize one target-consistent context-mode training view.
+    """Materialize a target-consistent context-mode training view.
 
-    At online inference, ``context_max_units=K`` retains K *completed* units while the next unit is
-    being produced.  Therefore a target unit ``t`` sees units ``[t-K, ..., t-1]`` and the generated
-    text from older units in ``previous:``.  Only the target unit keeps labels; retained history is
-    input context, not an additional target whose historical context would be different.
-
-    This is a materialized SFT view: retained history tokens are recomputed in the snapshot. It
-    intentionally does not attempt to reproduce the upstream decoder's detached, stale KV tensors.
-
-    The caller must serialize without left truncation before invoking this function.  This helper
-    deliberately fails rather than silently truncate an exact snapshot that does not fit the
-    configured sequence length.
+    Target unit ``t`` sees the preceding K completed units and older generated text in
+    ``previous:``. Only the target retains labels. History tokens are recomputed in the
+    snapshot, which is built before left truncation and requires sufficient max_seq_length.
     """
     ordinary_units = sorted({unit_id for unit_id in item.unit_ids if unit_id >= 0})
     if target_unit not in ordinary_units:

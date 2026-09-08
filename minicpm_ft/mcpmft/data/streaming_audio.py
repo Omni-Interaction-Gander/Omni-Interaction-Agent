@@ -37,17 +37,11 @@ def build_streaming_mel_batch(
     slide_trigger_seconds: float = STREAMING_SLIDE_TRIGGER_SECONDS,
     slide_stride_seconds: float = STREAMING_SLIDE_STRIDE_SECONDS,
 ) -> StreamingMelBatch:
-    """Vectorize the runtime mel contract without repeatedly running the APM.
+    """Vectorize the runtime streaming-mel contract.
 
-    The vendor runtime receives one second at a time, prepends 35 ms before its 1030 ms first
-    consumption, emits two stable suffix mel frames for the CNN, and subsequently emits two prefix
-    plus two suffix frames. It also changes log-mel normalization from a fixed floor to an
-    eight-decade rolling-window floor after five seconds.
-
-    This function computes one raw log-mel spectrogram for the complete waveform, then slices and
-    normalizes each unit exactly as the streaming frontend would. The returned windows can be
-    processed by the CNN as one batch and by the Whisper Transformer as long chunk-masked groups;
-    no per-second APM forward is required.
+    Runtime consumes one-second chunks with a 35 ms first-unit prefix, two CNN
+    redundancy frames per side, and rolling log-mel normalization after startup.
+    One full spectrogram is sliced into unit windows for batched CNN and Whisper passes.
     """
 
     if not waveforms:
@@ -183,7 +177,7 @@ def _raw_log_mel(waveform: np.ndarray, feature_extractor: Any) -> np.ndarray:
         mel_filters=feature_extractor.mel_filters,
         log_mel="log10",
     )
-    # MiniCPMAAudioProcessor removes the final centered frame.
+    # MiniCPMAAudioProcessor omits the final centered frame.
     return np.asarray(values[:, :-1], dtype=np.float32)
 
 
@@ -198,7 +192,7 @@ def _runtime_log_floor(
 ) -> float:
     sample_rate = int(feature_extractor.sampling_rate)
     if buffer_length < 5 * sample_rate:
-        # StreamingMelProcessorExact intentionally uses a fixed floor during startup.
+        # Startup uses the fixed mel floor.
         return -10.0
 
     hop_length = int(feature_extractor.hop_length)
@@ -215,8 +209,7 @@ def _runtime_log_floor(
     if interior_end > interior_start:
         maxima.append(float(raw_log_mel[:, interior_start:interior_end].max()))
 
-    # Center padding changes only the first two and the final unstable mel frames of a rolling
-    # buffer. Recompute those few frames exactly instead of recalculating the complete prefix.
+    # Recompute only frames affected by rolling-buffer center padding.
     local_waveform = shifted_waveform[base_samples:consumed_samples]
     boundary_indices = list(range(left_boundary_count))
     boundary_indices.extend(range(stable_count, frame_count))
@@ -232,7 +225,7 @@ def _runtime_log_floor(
         )
     if not maxima:
         raise ValueError("streaming dynamic normalization has no mel frames")
-    # StreamingMelProcessorExact explicitly switches to dynamic_range_db=8 after startup.
+    # After startup, use the runtime dynamic range.
     return max(maxima) - 8.0
 
 

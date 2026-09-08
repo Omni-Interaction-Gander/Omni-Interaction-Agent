@@ -123,12 +123,11 @@ def augment_frontbrain_tool_context(
     forbidden_tool_names: Sequence[str] = (),
     rng: random.Random,
 ) -> OmniSample:
-    """Materialize the runtime-visible tool face without changing source manifests.
+    """Materialize the runtime-visible tool interface for a training sample.
 
-    Under ``task_tools_v1`` the three task schemas are unconditional system context. Existing
-    business schemas are preserved because they may ground supervised calls. When selected, extra
-    business schemas are sampled only into remaining capacity. The returned sample is always a
-    deep copy so repeated epochs and collator workers cannot contaminate cached source rows.
+    ``task_tools_v1`` always includes the three task schemas. Existing business schemas
+    remain available, and sampled additions use the remaining capacity. A deep copy keeps
+    epochs and collator workers isolated.
     """
 
     if protocol != TASK_TOOLS_TRAINING_PROTOCOL:
@@ -207,10 +206,7 @@ def augment_frontbrain_tool_context(
                 unique_candidates.append(tool)
                 candidate_names.add(name)
 
-        # Do not shuffle or normalize a multi-thousand-schema catalog for every training row.
-        # A bounded random probe keeps per-row augmentation independent of catalog scale. If the
-        # remaining schema-token budget is too small, emitting fewer distractors is safer than an
-        # unbounded catalog scan or silently exceeding the serving contract.
+        # Probe a bounded random subset so per-row work is independent of catalog size.
         probe_count = min(len(business_tool_catalog), max(24, target * 16)) if target else 0
         for index in rng.sample(range(len(business_tool_catalog)), probe_count):
             consider(business_tool_catalog[index])

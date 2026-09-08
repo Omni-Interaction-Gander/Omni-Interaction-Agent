@@ -46,7 +46,7 @@ SteeringMode = Literal["native", "next_turn", "none"]
 SideQueryMode = Literal[
     "native_fork",
     "independent_session",
-    # Migration aliases used by the coordinator-era capability contract.
+    # Coordinator-era capability aliases.
     "native",
     "isolated_fork",
     "next_turn",
@@ -54,14 +54,13 @@ SideQueryMode = Literal[
 ]
 AuthorityEnforcement = Literal["gateway", "backend_hook", "sandbox", "none"]
 StructuredEvents = Literal["native", "injected_tool", "limited", "none"]
-# Capability tiers that let one harness span coding agents -> reasoning APIs.
+# Provider capability tiers.
 ContextProvisioning = Literal["pull", "push_bounded"]
 SessionModel = Literal["stateful", "stateless"]
 CoordinatorCallStatus = Literal["completed", "failed", "timed_out"]
 ReasoningProfile = Literal["fast", "balanced", "deep"]
 
-# Native task-tool face. The user text is never carried in these
-# arguments; the runtime binds the current TurnEnvelope.
+# Native task tools bind the current TurnEnvelope in the runtime.
 TaskLane = Literal["main", "fork"]
 TaskKind = Literal["main", "side_query"]
 TaskResolveAction = Literal[
@@ -69,8 +68,7 @@ TaskResolveAction = Literal[
 ]
 TASK_LANES = frozenset(TaskLane.__args__)
 TASK_RESOLVE_ACTIONS = frozenset(TaskResolveAction.__args__)
-# Every task call returns one synchronous result so the front-brain can voice
-# an acknowledgement, ask a clarifying question, or report a missing task.
+# Task calls return a synchronous result for the front brain.
 TaskControlStatus = Literal[
     "ok", "ambiguous", "no_such_task", "unsupported", "invalid_action"
 ]
@@ -90,9 +88,8 @@ def _stable_key(value: str, name: str) -> None:
         raise ValueError(f"{name} must be a stable ASCII key")
 
 
-# Fixed, closed vocabularies for supervision. The Coordinator and Worker both
-# classify into these sets instead of inventing free-form keys, so deterministic
-# matching cannot silently miss a rule. Milestone keys stay descriptive/free.
+# Closed supervision vocabularies shared by coordinator and worker. Milestone
+# keys remain descriptive.
 ASK_REASONS = frozenset(
     {
         "critical_input.missing",  # a required input is missing
@@ -320,8 +317,7 @@ class TurnEnvelope:
     start_ms: int | None = None
     end_ms: int | None = None
     timestamp_ms: int | None = None
-    # Trusted routing metadata attached by the Runtime after a native
-    # front-brain call. It is not accepted from the transport's turn.final.
+    # Routing metadata attached by the runtime after a native front-brain call.
     frontbrain_action: Literal["", "task_start"] = ""
     frontbrain_task_name: str = ""
     runtime_provider_name: str = ""
@@ -415,8 +411,7 @@ class ContextPlan:
 class BackendCapabilities:
     steering: SteeringMode = "none"
     side_queries: SideQueryMode = "none"
-    # Starting a read-only query after the parent task is terminal is a
-    # separate promise from querying an active run.
+    # Read-only queries may outlive the parent task.
     terminal_side_queries: SideQueryMode = "none"
     interactions: bool = False
     blocking_granularity: BlockingScope = "run"
@@ -426,8 +421,7 @@ class BackendCapabilities:
     session_resume: bool = False
     modalities: frozenset[str] = frozenset({"text"})
     max_parallel_projects: int = 1
-    # Unknown providers default to bounded push. Pull is a stronger promise and
-    # is only valid when the provider exposes the standard context_fetch tool.
+    # Pull requires the provider's context_fetch tool; other providers use bounded push.
     context_provisioning: ContextProvisioning = "push_bounded"
     session: SessionModel = "stateful"
     worker_tools: frozenset[str] = frozenset()
@@ -565,21 +559,14 @@ class TaskRecord:
     error: str = ""
     created_at_ms: int = field(default_factory=now_ms)
     updated_at_ms: int = field(default_factory=now_ms)
-    # Short, human/voice-friendly name; the shared identity across
-    # user <-> front-brain <-> harness. Unique among an owner's active tasks
-    # (enforced at creation). May be non-ASCII (e.g. "论文调研").
+    # Human-facing name shared by the user, front brain, and provider.
     name: str = ""
-    # Stable worker-conversation identity. A task_start owns a new lineage;
-    # a task_send continuation may create another ledger TaskRecord while
-    # retaining this identity so the provider resumes exactly that task.
+    # Stable provider conversation identity across task_send continuations.
     lineage_id: str = ""
-    # Side-query tasks are persisted for exactly-once execution/delivery but
-    # remain hidden from the user's main task slate.
+    # Side queries are persisted but omitted from the main task slate.
     kind: TaskKind = "main"
     parent_task_id: str = ""
-    # The exact parent run is retained separately from the logical lineage.
-    # Empty is accepted only so ledgers written before this field existed can
-    # still decode; newly-created side queries always persist it.
+    # Exact parent run; empty values support older ledger records.
     parent_run_id: str = ""
 
     def __post_init__(self) -> None:
@@ -738,8 +725,7 @@ class DeliveryRecord:
     timing: Literal["safe_pause", "interrupt"]
     topic: Literal["milestone", "interaction", "final", "risk", "aggregate"]
     speech_hint: str
-    # Structured final outcome (completed/partial/failed/cancelled) — carried as
-    # a field, NOT baked into an English phrase, so the front-brain phrases it.
+    # Structured final outcome, phrased for the user by the front brain.
     status: str = ""
     state: DeliveryState = "pending"
     claim_token: str = ""
@@ -940,7 +926,7 @@ class SendTaskCommand:
     instruction: str
     mode: Literal["update", "query"] = "update"
     context_plan: ContextPlan | None = None
-    preempt: bool = False  # lean change: barge-in the running turn
+    preempt: bool = False  # interrupt the active turn
 
     def __post_init__(self) -> None:
         _required(self.task_id, "task_id")
@@ -1263,18 +1249,14 @@ class WorkerRequest:
     policy: WorkerPolicyView
     reasoning_profile: ReasoningProfile = "balanced"
     source_turn: TurnEnvelope | None = None
-    # Provider-neutral conversation key. It equals task_id for task_start and
-    # remains stable only across explicit task_send continuations.
+    # Provider-neutral conversation key, stable across task_send continuations.
     lineage_id: str = ""
     kind: TaskKind = "main"
     parent_task_id: str = ""
     parent_run_id: str = ""
-    # Opaque provider session captured on the parent RunRecord. It may be empty
-    # for stateless/independent-session providers.
+    # Opaque provider session; empty for stateless providers.
     parent_backend_session_id: str = ""
-    # Preserve the trusted user utterance independently from the mutable task
-    # instruction. The front-brain task name is display-only and is never a
-    # Worker instruction.
+    # Original user utterance, stored separately from the mutable task instruction.
     original_turn: str = ""
 
     def __post_init__(self) -> None:
@@ -1322,7 +1304,7 @@ class WorkerMessage:
     decision: str | None = None
     policy: WorkerPolicyView | None = None
     source_turn: TurnEnvelope | None = None
-    preempt: bool = False  # barge-in: interrupt the in-flight turn (lean change)
+    preempt: bool = False  # interrupt the active turn
 
     def __post_init__(self) -> None:
         _required(self.message_id, "message_id")
@@ -1385,10 +1367,9 @@ class TaskControlResult:
     task_ids: tuple[str, ...] = ()
     interaction_id: str | None = None
     reason_key: str = ""
-    # Synchronous outcome of task_start/task_send/task_resolve.
+    # Synchronous task-tool outcome.
     status: TaskControlStatus = "ok"
-    # When status == "ambiguous": candidate task names for the front-brain to
-    # ask the user by name (works even if the front-brain forgot them).
+    # Candidate task names when status is ambiguous.
     candidates: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -1450,8 +1431,7 @@ class CoordinationJob:
 
 @dataclass(frozen=True)
 class TaskSlateEntry:
-    """One task as seen by the front-brain: name + one-line status. ``done``
-    marks a recently-finished task still referenceable for a follow-up."""
+    """Task name and status shown to the front brain for reference resolution."""
 
     name: str
     status_line: str
@@ -1459,31 +1439,22 @@ class TaskSlateEntry:
 
 
 def coarse_task_status(status: str) -> str:
-    """Collapse the 8-state task machine to the three states the front-brain
-    cares about in lean mode: running / finished / failed. Cancelled counts as
-    failed (the user stopped it); partial counts as finished (it produced
-    something)."""
+    """Map task lifecycle state to running, finished, or failed."""
     if status in ("completed", "partial"):
         return "finished"
     if status in ("failed", "cancelled"):
         return "failed"
-    return "running"  # queued / running / finalizing / cancelling
+    return "running"
 
 
 def render_task_slate(
     entries: tuple[TaskSlateEntry, ...], *, flat: bool = False
 ) -> str:
-    """Render the live task slate for injection into the front-brain system
-    prompt. The harness refreshes this on change so the front-brain never has
-    to remember tasks; reference resolution is coreference over this list.
+    """Render the live task slate for front-brain coreference.
 
-    ``flat=True`` (lean mode) renders one ``name: status`` line per task, no
-    section headers — the slate is a pure coreference anchor, progress detail is
-    pulled via a fork side-query, not carried here.
-
-    Otherwise (coordinator mode) two sections: tasks in progress, and
-    recently-finished tasks that can still be referenced (so "刚那个…再做一步"
-    resolves right after completion)."""
+    Flat mode emits one ``name: status`` line per task. Coordinator mode separates
+    active and recently completed tasks.
+    """
 
     if not entries:
         return "当前没有正在进行的后台任务。"

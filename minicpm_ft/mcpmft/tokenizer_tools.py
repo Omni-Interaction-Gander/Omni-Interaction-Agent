@@ -15,8 +15,7 @@ IMAGE_START = SpecialToken("<image>", 151669)
 IMAGE_END = SpecialToken("</image>", 151670)
 SLICE_START = SpecialToken("<slice>", 151679)
 SLICE_END = SpecialToken("</slice>", 151680)
-# The MiniCPM-o 4.5 resampler emits 64 query embeddings per overview image. Realtime duplex
-# inference uses max_slice_nums=1, so each arriving video frame has exactly this many positions.
+# MiniCPM-o 4.5 emits 64 positions for each unsliced duplex frame.
 IMAGE_FEATURE_SIZE = 64
 UNIT_START = SpecialToken("<unit>", 151683)
 UNIT_END = SpecialToken("</unit>", 151684)
@@ -33,25 +32,21 @@ SPK_BOS = SpecialToken("<|spk_bos|>", 151700)
 SPK_EOS = SpecialToken("<|spk_eos|>", 151702)
 TTS_BOS = SpecialToken("<|tts_bos|>", 151703)
 TTS_EOS = SpecialToken("<|tts_eos|>", 151704)
-# NOTE: the following two ids index the TALKER's own embedding table (tts.emb_text, vocab 152064),
-# NOT the LLM tokenizer. In the LLM tokenizer these ids decode to unrelated tokens
-# (151692=</perception>, 151687=<focus>) — do not look them up via the LLM tokenizer.
-TEXT_EOS_ID = 151692  # talker text-eos (tts.emb_text space)
-AUDIO_BOS_ID = 151687  # talker audio-bos (tts.emb_text space)
+# Talker embedding-table IDs; they are unrelated to the LLM tokenizer vocabulary.
+TEXT_EOS_ID = 151692
+AUDIO_BOS_ID = 151687
 S3_EOS_ID = 6561
 S3_NUM_AUDIO_TOKENS = 6562
 
-# The base MiniCPM-o vocabulary already owns listen/speak/interrupt. Backchannel is the only
-# additional realtime interaction decision needed by the native function-call front brain.
+# Backchannel extends MiniCPM-o's native listen/speak/interrupt decisions.
 NATIVE_FRONTBRAIN_TOKENS = ["<|backchannel|>"]
 
 
 def _resolved_or_none(tokenizer, text: str) -> int | None:
-    """Return the token id only if `text` is a REAL vocab token.
+    """Resolve a token ID, treating unknown aliases as absent.
 
-    MiniCPM-o's tokenizer returns the unk id (not None / not -1) for unknown tokens, so the
-    naive `is None or < 0` check never fires. Treat a result equal to unk_token_id as 'absent'
-    (unless the queried text IS literally the unk token).
+    MiniCPM-o returns unk_token_id for unknown spellings; the literal unknown token
+    remains a valid vocabulary entry.
     """
     rid = tokenizer.convert_tokens_to_ids(text)
     if rid is None or rid < 0:
@@ -68,10 +63,7 @@ CONTROL_TOKENS = {
     "interrupt": INTERRUPT,
 }
 
-# Tokens that drive generation but must never appear in the user-visible text/speech.
-# Scope: the CURRENT single-model MiniCPM-o full-duplex scheme (listen/speak two-stage control +
-# unit/chunk boundaries + tts/audio/spk markers). All of these REALLY exist in the vocab.
-#
+# Generation-control tokens excluded from visible text and speech.
 PUBLIC_BAN_TOKENS = [
     LISTEN.text,
     SPEAK.text,
@@ -138,10 +130,7 @@ def assert_minicpmo_tokenizer(tokenizer) -> None:
 
 
 def forbidden_token_ids(tokenizer) -> list[int]:
-    """Public-output ban set: only tokens that REALLY exist in the vocab (deduped).
-
-    Missing tokens resolve to ``unk`` and must not pollute the ban set.
-    """
+    """Return deduplicated IDs for available public-output control tokens."""
     ids: list[int] = []
     seen: set[int] = set()
     for text in PUBLIC_BAN_TOKENS:

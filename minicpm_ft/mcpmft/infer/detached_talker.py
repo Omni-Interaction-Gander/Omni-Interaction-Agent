@@ -178,7 +178,7 @@ class DetachedTalkerRuntime:
 
             try:
                 from stepaudio2 import Token2wav
-            except ImportError as exc:  # pragma: no cover - exercised on the deployment image.
+            except ImportError as exc:  # pragma: no cover
                 raise ImportError(
                     "Detached Talker requires stepaudio2/Token2wav from minicpmo-utils"
                 ) from exc
@@ -499,14 +499,14 @@ class DetachedTalkerRuntime:
                 emit_codes(new_tokens[:, emitted:stop].clone(), final=False)
                 emitted = stop
         else:
-            # The last prediction is the upstream look-ahead token and is intentionally withheld.
+            # Hold the upstream look-ahead token for the next step.
             total_visible = max_new_token - 1
 
         if total_visible > emitted:
             emit_codes(new_tokens[:, emitted:total_visible].clone(), final=final)
             emitted = total_visible
         elif final:
-            # Flush Token2wav look-ahead/cache state even when EOS lands on a chunk boundary.
+            # Flush Token2wav look-ahead state at EOS.
             emit_codes(new_tokens[:, 0:0].clone(), final=True)
 
         return past_key_values, total_visible, ar_cost
@@ -761,7 +761,7 @@ class AsyncTalkerWorker:
                 except Exception:
                     LOGGER.exception("Detached Talker reset failed after cancellation")
                 self._runtime_generation = None
-            except Exception as exc:  # pragma: no cover - real model/runtime failures.
+            except Exception as exc:  # pragma: no cover
                 LOGGER.exception(
                     "Detached Talker failed for generation=%d unit=%d",
                     request.generation_id,

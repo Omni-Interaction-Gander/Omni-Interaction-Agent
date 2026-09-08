@@ -30,10 +30,8 @@ class ScreenFrame:
 class LatestScreenFrameBuffer:
     """Capture-ordered screen buffer consumed at the MiniCPM unit clock.
 
-    Producers never wait for model inference. Timestamped consumers select the newest
-    frame available at the start of their audio unit; legacy consumers retain the old
-    latest-frame behavior. Continuous Omni mode can reuse the most recently consumed
-    frame.
+    Producers publish independently of inference. Timestamped consumers select the newest
+    frame available at audio-unit start; continuous Omni mode may reuse the last frame.
     """
 
     def __init__(self, *, max_pending_frames: int = 128) -> None:
@@ -112,12 +110,7 @@ class LatestScreenFrameBuffer:
         return (frame,) if frame is not None else ()
 
     def reset(self) -> None:
-        """Forget both the pending and the reusable frame.
-
-        Required when vision is switched on or off mid-session: ``_last`` outlives
-        an arbitrarily long audio-only interval, so continuous Omni mode would
-        otherwise present a stale image to the model as the current one.
-        """
+        """Clear pending and reusable frames across media-mode transitions."""
 
         with self._lock:
             self._pending.clear()

@@ -52,14 +52,11 @@ def insert_random_idle_gaps(
     tokenizer: Any | None = None,
     text_tokens_per_unit: int = 4,
 ) -> OmniSample:
-    """Insert deterministic, label-safe idle mic units without changing source manifests.
+    """Insert deterministic idle microphone units without changing source manifests.
 
-    Short waits are placed only at the beginning and at completed assistant-to-user boundaries.
-    A profile may also opt into short waits between complete, non-overlapping turns from distinct
-    human speakers. This path is disabled by default and never applies to reactive speech events.
-    A profile may replace a short wait with one or more 5-20-unit no-command spans, including a
-    tail span. Long replacements never apply to human-to-human waits. Overlaps, interruptions,
-    backchannels, and incomplete turns retain native timing.
+    Profiles place short waits at valid turn boundaries and may add longer no-command
+    spans. Reactive speech, overlaps, interruptions, backchannels, and incomplete turns
+    retain source timing.
     """
     if block_ms <= 0:
         raise ValueError("block_ms must be positive")
@@ -308,13 +305,9 @@ def insert_pending_task_idle_gaps(
     block_ms: int = 1000,
     max_timeline_units: int | None = None,
 ) -> OmniSample:
-    """Teach event causality while a background task is pending.
+    """Insert a configured listen span after background-task acknowledgement.
 
-    A successful ``task_start``/``task_send`` may be acknowledged immediately. After that spoken
-    turn has actually finished, no new assistant turn is justified until user input or a Runtime
-    event arrives. Reviewed agent rows contain either a later ``worker_delivery`` or end at the
-    acknowledgement, so this transform creates a deterministic 10-30-unit (profile-configured)
-    listen span without inventing task state or semantic content.
+    The span ends at the next user input or runtime event and adds no task state or text.
     """
 
     if block_ms <= 0:
@@ -382,8 +375,7 @@ def insert_pending_task_idle_gaps(
         ):
             delivery_index = None
 
-        # This is deliberately an event-free augmentation. Do not move real user input or another
-        # action merely to manufacture a clean waiting span.
+        # Idle-gap augmentation leaves user input and actions in place.
         span_end = delivery_index if delivery_index is not None else len(result.turns)
         if any(
             _is_observable_intervening_turn(turn)
@@ -850,14 +842,10 @@ def _synchronize_paired_interrupt_controls(
     original_turns: Sequence[Turn],
     shifted_turns: Sequence[Turn],
 ) -> None:
-    """Keep the two labels for one observed interrupt on the same shifted block.
+    """Keep paired interrupt labels on the same shifted block.
 
-    An inserted gap may contain a sub-block alignment offset. The overlapping assistant and user
-    can then cross different block boundaries even though both move by the same number of
-    milliseconds. Their per-turn block deltas differ, so independently shifting the duplicate
-    interrupt labels would make the user control collide with a still-supervised assistant unit.
-    Only pairs that agreed in the source are synchronized; malformed source labels remain visible
-    to the serializer instead of being silently repaired.
+    Sub-block gap offsets can move overlapping turns across different boundaries. Pairs
+    aligned in the source are synchronized after shifting; other labels remain unchanged.
     """
     for index in range(1, min(len(original_turns), len(shifted_turns))):
         original_user = original_turns[index]

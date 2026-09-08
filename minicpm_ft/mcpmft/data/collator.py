@@ -48,9 +48,9 @@ class OmniCollator:
     s3_cache: S3TokenCache | None = None
     audio_geometry: AudioGeometry | None = None
     pad_to_multiple_of: int | None = 8
-    audio_processor: Any = None  # processor with .audio_feature_extract for S2T audio input
-    audio_augmenter: Any = None  # task-aware training-only microphone waveform augmenter
-    enable_thinking: bool = False  # False = inject empty <think></think> prefix (official default)
+    audio_processor: Any = None  # S2T feature extractor
+    audio_augmenter: Any = None  # training microphone augmentation
+    enable_thinking: bool = False
     kv_delete_mask: bool = False
     kv_keep_previous_units: int = 128
     sliding_window_training: str = "off"
@@ -68,7 +68,7 @@ class OmniCollator:
     frontbrain_business_tool_augmentation_max: int = 3
     frontbrain_max_tools_per_sample: int = 6
     frontbrain_max_tool_schema_tokens: int = 1024
-    turn_gap_ms: int = 2000             # max gap for continuing adjacent incomplete Talker chunks
+    turn_gap_ms: int = 2000  # continuation gap for incomplete Talker chunks
     duplex_text_tokens_per_unit: int = 4
     codes_per_text_token: int = 6
     duplex_speech_tokens_per_unit: int = 25
@@ -163,7 +163,7 @@ class OmniCollator:
             audio_bounds_batch.append(item.audio_bounds)
             if item.unit_ids:
                 has_units = True
-                unit_ids_batch.append(item.unit_ids + [-1] * pad_len)  # -1 = padding (masked)
+                unit_ids_batch.append(item.unit_ids + [-1] * pad_len)
             else:
                 unit_ids_batch.append([-1] * max_len)
             has_audio = has_audio or bool(item.audio_inputs)
@@ -188,8 +188,8 @@ class OmniCollator:
             "speech_segments": speech_segments,
             "sample_ids": [item.id for item in serialized],
         }
-        # Both full-supervision modes keep every target while hiding evicted ordinary units with
-        # the runtime-equivalent last-K mask. PFC and Slate tokens stay in the protected prefix.
+        # Supervise every target with the runtime-equivalent last-K mask; PFC and
+        # Slate remain in the protected prefix.
         use_kv_delete_mask = self.sliding_window_training in {
             "window_no_previous",
             "context_memory",
@@ -224,8 +224,8 @@ class OmniCollator:
         bsz, seqlen = unit_ids.shape
         dtype = torch.float32
         neg = torch.finfo(dtype).min
-        ui = unit_ids.unsqueeze(2)  # [b, q, 1]
-        uj = unit_ids.unsqueeze(1)  # [b, 1, k]
+        ui = unit_ids.unsqueeze(2)
+        uj = unit_ids.unsqueeze(1)
         q_idx = torch.arange(seqlen).view(1, seqlen, 1)
         k_idx = torch.arange(seqlen).view(1, 1, seqlen)
         causal = k_idx <= q_idx
@@ -243,7 +243,7 @@ class OmniCollator:
             ),
         )
         recent = ordinary_query & ordinary_key & (uj <= ui) & ((ui - uj) <= keep_prev)
-        # Padding keys are excluded because they are neither protected nor ordinary.
+        # Padding keys are excluded from both prefix and ordinary units.
         allow = causal & valid_query & (protected_key | recent)
         mask = torch.where(allow, torch.zeros((), dtype=dtype), torch.full((), neg, dtype=dtype))
         return mask.unsqueeze(1)
@@ -338,7 +338,7 @@ class OmniCollator:
                 af, _, _ = self.audio_processor.audio_feature_extract(
                     [[waveform]], sampling_rate=16000, chunk_length=1
                 )
-                merged_mel = af[0] if af.dim() == 3 else af  # (80, F)
+                merged_mel = af[0] if af.dim() == 3 else af
                 if not bool(torch.isfinite(merged_mel).all().item()):
                     raise RuntimeError(
                         f"Non-finite audio features for training sample_id={item.id!r} "
@@ -352,9 +352,7 @@ class OmniCollator:
             per_sample_group_bounds.append(group_bounds_all)
             streaming_first_unit_masks.append([])
 
-        # Flatten feature rows and preserve one length tensor per batch sample. The turn path
-        # consumes these lengths through get_audio_embedding; the duplex path consumes the
-        # explicit unit/group metadata below.
+        # Keep one audio-length tensor per batch sample for turn serialization.
         flat_feats = [f for feats in per_sample_feats for f in feats]
         if not flat_feats:
             return
@@ -366,7 +364,7 @@ class OmniCollator:
                 f = torch.nn.functional.pad(f, (0, pad))
             padded.append(f)
         batch["audio_features"] = torch.cat(padded, dim=0)
-        # per-sample: concat that sample's per-audio length tensors into a single 1-D tensor.
+        # Concatenate each sample's audio lengths.
         grouped_lens = []
         for lens in per_sample_lens:
             if lens:
@@ -397,7 +395,7 @@ class OmniCollator:
         image_bounds_batch,
         torch,
     ) -> None:
-        """Process sampled video frames with MiniCPM-o's official realtime vision path."""
+        """Process sampled frames with MiniCPM-o's realtime vision path."""
 
         from mcpmft.data.vision import load_image_refs
         from mcpmft.tokenizer_tools import IMAGE_FEATURE_SIZE
@@ -456,8 +454,7 @@ class OmniCollator:
             )
 
         keep_units = max(0, int(self.context_max_units))
-        # K retained completed units plus the current unit still fits the initial causal stream.
-        # The first target that actually follows an eviction is ordinal K + 1.
+        # The first target after an eviction has ordinal K + 1.
         first_evicted_target = keep_units + 1
         if len(ordinary_units) <= first_evicted_target:
             return item
@@ -525,11 +522,8 @@ class OmniCollator:
         if len(item.input_ids) <= self.max_seq_length or not added_tools:
             return item
 
-        # Business-tool distractors are optional context augmentation. A long but otherwise valid
-        # source row must not become a stochastic distributed-training failure merely because one
-        # draw selected a larger schema set. Replay the same row with the mandatory task trio and
-        # its source-required business tools only. Source rows that still exceed the hard token
-        # budget remain invalid and are rejected before the batch reaches the model.
+        # If optional tool distractors exceed the token budget, replay with only the
+        # task trio and source-required business tools.
         mandatory_sample = self._augment_tool_context(
             source_sample,
             business_tool_probability=0.0,
@@ -567,8 +561,7 @@ class OmniCollator:
                 pending_applied = bool(pending_meta.get("pending_tasks"))
                 pending_units = _serialized_unit_count(pending_only)
                 if pending_applied:
-                    # The unit cap budgets optional gaps. A pending-task wait is causal
-                    # supervision, so preserve it even when the source already exceeds the cap.
+                    # Preserve causal pending-task waits beyond the optional gap budget.
                     action = (
                         "used_pending_task_timeline_unit_cap"
                         if pending_units <= unit_cap
@@ -591,13 +584,8 @@ class OmniCollator:
                         apply_pending_task_gap=False,
                     )
                     original_units = _serialized_unit_count(original)
-                    # ``max_timeline_units`` is an augmentation budget, not a source-row
-                    # validity limit.  In window_no_previous mode an arbitrary-length source
-                    # timeline is valid: the 4-D attention mask keeps at most
-                    # ``context_max_units`` completed units visible to each query.  If the source
-                    # itself is already beyond the optional augmentation budget, preserve it
-                    # unchanged and let the independent max_seq_length guard decide whether it
-                    # is computationally trainable.
+                    # max_timeline_units limits augmentation, while max_seq_length validates
+                    # source rows. The attention mask enforces context_max_units independently.
                     action = (
                         "used_original_timeline_unit_cap"
                         if original_units <= unit_cap
@@ -789,8 +777,7 @@ class OmniCollator:
             serialization_max_length = sys.maxsize
         else:
             serialization_max_length = self.max_seq_length
-        # The run config is authoritative. Source-row prompt metadata is provenance from the
-        # release that created the row and must not split one training run across prompt versions.
+        # Use one prompt version from the run config across the training dataset.
         sample_system_prompt = str(self.duplex_system_prompt)
         if self.paradigm == "omniflow":
             return serialize_omniflow_sample(

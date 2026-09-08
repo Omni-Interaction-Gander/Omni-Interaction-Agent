@@ -112,8 +112,7 @@ def _run_cluster(
 
     processes: list[tuple[str, subprocess.Popen[bytes], Any]] = []
     for node_rank, host in enumerate(hosts):
-        # The resolved rendezvous address must reach every node even when it was
-        # inferred from the first host rather than written in YAML.
+        # Propagate the resolved rendezvous address to every node.
         node_overrides = [
             *overrides,
             "--launch.master_addr",
@@ -267,9 +266,7 @@ def _run_node(
     os.environ["NCCL_IB_DISABLE"] = "1" if config.nccl_ib_disable else "0"
     os.environ["OMP_NUM_THREADS"] = str(config.omp_num_threads)
 
-    # Import the CUDA-neutral training stack once on this node. Importing
-    # ``mcpmft.train.trainer`` also imports DeepSpeed, which initializes CUDA and
-    # cannot happen before local workers fork.
+    # Import the CUDA-neutral entry point before local workers fork.
     import mcpmft.train.main  # noqa: F401
 
     project_dir = _project_dir(config)

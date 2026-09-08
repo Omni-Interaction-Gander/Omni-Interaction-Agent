@@ -38,9 +38,8 @@ def encode_streaming_audio_windows(core: Any, batch: dict[str, Any]):
             "streaming audio CNN windows must produce at least 52 frames, "
             f"got {cnn.size(-1)}"
         )
-    # Runtime first unit has no prefix redundancy and removes one suffix CNN frame. Subsequent
-    # units remove one CNN frame from each side. Padding the first mel window to the common 104
-    # frames does not affect its retained first 50 outputs.
+    # Match runtime CNN boundaries: the first unit trims the suffix; later units
+    # trim one frame on each side.
     first_core = cnn[:, :, :50]
     regular_core = cnn[:, :, 1:51]
     unit_cnn = torch.where(

@@ -23,7 +23,7 @@ def turn_state_to_control(state: str | None, *, is_agent_turn: bool) -> str:
         return BACKCHANNEL_CLASS
     if normalized == "complete":
         return "speak"
-    # incomplete / wait / anything else → listen
+    # Non-speaking states map to listen.
     return "listen"
 
 
@@ -52,15 +52,10 @@ def serialize_omniflow_sample(
     include_system_prompt: bool = True,
     system_prompt: str = GANDER_DUPLEX_SYSTEM_PROMPT,
 ) -> SerializedSample:
-    """Single-model full-duplex serializer (block-driven, always-on mic).
+    """Serialize single-model full-duplex interaction with an always-on microphone.
 
-    Thin wrapper over the unified block-driven ``serialize_duplex_sample``. Every 1s
-    block emits: <unit> → env-audio placeholder (real user speech overlapping the block, else 1s
-    silence — matching the official always-on schema `<unit>[audio_embed]<control>…`) → listen/speak
-    control (SUPERVISED) → K agent text tokens (speak only) → optional <|turn_eos|> → <|chunk_eos|>
-    (speak only) → </unit>. A competitive interruption emits a control-only <|interrupt|> unit;
-    it does not emit assistant text or <|turn_eos|>. Talker S3 codes split by fixed unit
-    (non-final=speech_tokens_per_unit, final absorbs the complete uncapped remainder).
+    This wrapper delegates to ``serialize_duplex_sample``. Each one-second unit carries
+    perception, control, optional assistant text, boundaries, and aligned Talker targets.
     """
     from mcpmft.data.serialize_duplex import serialize_duplex_sample
 

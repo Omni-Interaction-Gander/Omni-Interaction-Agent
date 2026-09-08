@@ -57,11 +57,9 @@ class OnlineDuplexSettings:
     asr_base_url: str | None = None
     asr_timeout_sec: float = 120.0
     turn_bind_grace_sec: float = 5.0
-    # The mode every session STARTS in. "voice" keeps the audio-only path.
+    # Initial media mode for each session.
     media_mode: Literal["voice", "omni", "auto"] = "voice"
-    # Whether a session may switch vision on itself through `media.mode`. An
-    # audio-first deployment must opt in, so `media_mode="voice"` alone never
-    # grows a video surface.
+    # Allow clients to switch vision through `media.mode`.
     allow_client_video: bool = False
     client_video_mode: Literal["omni", "auto"] = "omni"
     client_video_sources: tuple[str, ...] = VIDEO_SOURCES
@@ -81,8 +79,7 @@ class _ActiveSession:
     duplex: GanderDuplexSession
     screen_token: str
     codex_frame_gate: ScreenFrameRateGate
-    # Live per-session media state. The settings value only seeds it; a client may
-    # move it with `media.mode` for the rest of the session.
+    # Per-session media state, initialized from settings.
     media_mode: str = "voice"
     video_source: str | None = None
     coordinator: Any | None = None
@@ -169,8 +166,7 @@ def _build_session(
         prefix_snapshot=runtime.prefix_snapshot,
     )
     if screen_frames is None:
-        # One browser frame represents one model unit. Keep a full context
-        # window so inference lag cannot evict the frame needed by queued audio.
+        # Retain one frame per model unit across the full context window.
         screen_frames = LatestScreenFrameBuffer(
             max_pending_frames=runtime.params.context_max_units
         )
@@ -449,9 +445,7 @@ class _WebSocketOutbox:
                 sent,
             )
         )
-        # Queueing alone does not suspend the caller. Yield once so the writer
-        # can put latency-sensitive UI/control JSON on the wire before any
-        # synchronous coordinator bookkeeping resumes on this event loop.
+        # Yield once so the writer can send latency-sensitive control events first.
         await asyncio.sleep(0)
         if sent is not None:
             await sent
@@ -665,8 +659,7 @@ def create_online_duplex_app(
         raise ValueError(
             f"client_video_sources must be a non-empty subset of {VIDEO_SOURCES}"
         )
-    # Refuse at startup rather than crashing on the model thread the moment a user
-    # enables their camera: with init_vision=false the vision tower does not exist.
+    # Client video requires an initialized vision tower.
     if (
         runtime.settings.media_mode != "voice" or runtime.settings.allow_client_video
     ) and not _vision_available(runtime):
@@ -940,9 +933,7 @@ def create_online_duplex_app(
                 if runtime.sessions.get(session_id) is not active:
                     return
                 if active.media_mode == "voice":
-                    # The session switched back to audio while this frame was in
-                    # flight. Dropping one frame is benign; closing the socket over
-                    # a race during a source switch is not.
+                    # Ignore a frame completed after the session returned to audio mode.
                     await websocket.send_text(
                         _json(
                             {
@@ -957,9 +948,7 @@ def create_online_duplex_app(
                 context_sampled = active.codex_frame_gate.accept(
                     header.captured_at_ms
                 )
-                # The ACK means the frame is available to the frontbrain, so publish
-                # it before acknowledging. Shared-storage persistence remains off the
-                # event loop and must not delay the browser's initial handshake.
+                # Publish to the front brain before ACK; persist off the event loop.
                 active.duplex.enqueue_screen_frame(decoded.frame)
                 await websocket.send_text(
                     _json(
@@ -975,8 +964,7 @@ def create_online_duplex_app(
                     )
                 )
                 if context_sampled:
-                    # A webcam frame is not the user's screen; tagging it keeps the
-                    # backbrain from narrating one as the other.
+                    # Tag webcam and screen frames separately for back-brain context.
                     source = header.video_source or active.video_source
                     media = await _screen_media_ref(
                         runtime,
@@ -1254,8 +1242,7 @@ def create_online_duplex_app(
                 if message.get("bytes") is not None:
                     audio = message["bytes"]
                     await asyncio.to_thread(coordinator.record_pcm16, audio)
-                    # Bound each model call to one coordination unit. This gives provider
-                    # tasks an event-loop opportunity between units even if a client batches PCM.
+                    # Process one unit per model call so provider events run between units.
                     chunk_bytes = int(
                         runtime.settings.input_sample_rate * runtime.params.chunk_ms / 1000 * 2
                     )
@@ -1341,10 +1328,7 @@ def create_online_duplex_app(
                     pending_audio_header = None
                     audio_timeline.reset()
                     if runtime.detached_talker is not None:
-                        # Reset discards the old conversation. Cancel its Talker
-                        # generation before waiting for the output pump, otherwise
-                        # a long synthesis can hold the only model slot after the
-                        # browser has already stopped playing it.
+                        # Cancel Talker generation before resetting the conversation.
                         await asyncio.to_thread(session.interrupt_output)
                     await stop_speech_output_pump()
                     if outbound_task is not None:
@@ -1354,9 +1338,7 @@ def create_online_duplex_app(
                     websocket_outbox.discard_pending()
                     assert active is not None
                     screen_frames = active.duplex.screen_frames
-                    # Reset is a new conversation on the same transport. Keep the
-                    # selected video source, but never let the new model session
-                    # reuse a frame captured for the conversation being discarded.
+                    # Keep the video source across reset, but clear captured frames.
                     screen_frames.reset()
                     active.coordinator = None
                     await coordinator.close(discard_state=True)
@@ -1396,8 +1378,7 @@ def create_online_duplex_app(
                         runtime, want_video=want_video, source=source
                     )
                     if reason is not None:
-                        # Deliberately not an `error`: browser clients treat that as
-                        # fatal, and a refused mode request must not end the session.
+                        # A rejected mode request is nonfatal for the session.
                         await send_text(
                             {"type": "media.mode.rejected", "reason": reason}
                         )
@@ -1551,9 +1532,7 @@ def create_online_duplex_app(
             if coordinator is not None:
                 await coordinator.close()
             if session is not None and not session.closed:
-                # All model-owning coordinator jobs have stopped at this point;
-                # close is a short lifecycle operation and must finish even
-                # after the loop's executor-backed work has drained.
+                # Model-owning coordinator jobs have stopped before close.
                 session.close()
             runtime.model_lock.release()
 

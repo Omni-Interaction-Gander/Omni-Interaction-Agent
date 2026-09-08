@@ -19,16 +19,11 @@ def label_interruption_controls(
     block_ms: int = 1000,
     max_decision_delay_ms: int | None = None,
 ) -> int:
-    """Attach one causal interrupt control to every competitive user event.
+    """Attach a causal interrupt control to each competitive user event.
 
-    With no explicit unit-level control request, the control remains at the assistant's observed
-    release. When ``max_decision_delay_ms`` is provided, the latest eligible unit ending within
-    that bound is selected instead. Unitized corpora may set ``requested_control_block_index`` on
-    the interrupting user event. This supports a causal ``<speak>`` then ``<interrupt>`` pattern:
-    the first user-containing unit remains a supervised speak unit and the second user-containing
-    unit is the control unit. Source assistant text remains intact; the predecessor
-    records the causal prefix that remains supervised and any planned suffix suppressed by the
-    control.
+    Control occurs at the observed assistant release or the latest unit within the
+    configured delay. The predecessor retains supervised speech before control and marks
+    its suppressed suffix.
     """
     if block_ms <= 0:
         raise ValueError("block_ms must be positive")
@@ -46,10 +41,8 @@ def label_interruption_controls(
             continue
         if index == 0:
             raise ValueError("competitive interruption has no preceding assistant turn")
-        # The interrupted assistant is the nearest PRECEDING assistant turn, not necessarily the
-        # immediately preceding one. In multi-party rows (anti_multiturn_v2) bystander and
-        # target-side user speech is interleaved over the same assistant utterance, so the
-        # competitive interruption is separated from its predecessor by those distractor turns.
+        # Match an interruption to the nearest preceding assistant, allowing
+        # interleaved user or bystander turns.
         predecessor = None
         for candidate in reversed(turns[:index]):
             if candidate.get("role") == "assistant":

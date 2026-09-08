@@ -430,8 +430,7 @@ input[type="range"] {
   gap: 6px;
 }
 
-/* The preview shows the encoded frame, not the raw stream, so the resolution the
-   frontbrain actually receives is visible rather than implied. */
+/* Preview the encoded frame sent to the front brain. */
 #videoPreview {
   width: 100%;
   height: auto;

@@ -245,9 +245,8 @@ def validate_project_config(config) -> None:
                 "business-tool augmentation requires "
                 "data.frontbrain_business_tool_catalog_path"
             )
-        # Both supported runtime policies keep the full causal stream and supervise every unit.
-        # Their 4D attention mask retains the latest K ordinary units without recomputing RoPE;
-        # context_memory additionally keeps any PFC/Slate prefix permanently visible.
+        # Both policies supervise the full causal stream with a last-K attention mask;
+        # context_memory also retains the PFC/Slate prefix.
         if config.data.sliding_window_training not in {
             "context_memory",
             "window_no_previous",
@@ -864,9 +863,7 @@ def build_hf_training_args(config):
         "adam_beta2": train.adam_beta2,
         "adam_epsilon": train.adam_epsilon,
         "logging_steps": train.logging_steps,
-        # A bounded integration run must disable Trainer's own end-of-run checkpoint. Skipping
-        # only the explicit save after trainer.train() still lets DefaultFlowCallback save once
-        # when max_steps is reached, which is hundreds of GB for the full Thinker.
+        # Bounded integration runs disable both periodic and final checkpoints.
         "save_strategy": "no" if config.runtime.skip_final_save else "steps",
         "save_steps": train.save_steps,
         "save_total_limit": train.save_total_limit,
@@ -879,8 +876,7 @@ def build_hf_training_args(config):
         "report_to": train.report_to,
         "seed": config.data.seed,
         "data_seed": config.data.seed,
-        # Keep per-rank batches independent so variable-length audio/text fields are padded locally.
-        # Accelerate will still shard torch IterableDataset objects across ranks.
+        # Pad variable-length batches per rank; Accelerate shards the iterable dataset.
         "accelerator_config": {"dispatch_batches": False},
     }
     if train.deepspeed:
@@ -892,9 +888,7 @@ def build_hf_training_args(config):
 
 def build_dataset(config):
     cap = config.data.max_audio_seconds
-    # HF Trainer/Accelerate wraps torch IterableDataset in IterableDatasetShard on multi-rank runs.
-    # Do not pre-shard by rank here, otherwise multi-GPU training sees only 1/world_size of the
-    # intended global samples. Keep worker sharding so DataLoader workers do not duplicate rows.
+    # Accelerate shards IterableDataset across ranks; only DataLoader workers shard here.
     manifest_paths = config.data.manifest_paths
     if not manifest_paths:
         raise ValueError("data.manifest_paths cannot be empty")
@@ -999,11 +993,10 @@ def main(argv: list[str] | None = None) -> None:
                 "Excluded %s oversized business schema variants from random augmentation",
                 len(rejected_business_tools),
             )
-    # Token2wav is frozen waveform synthesis and is never called by either training loss.
+    # Token2wav is not part of either training loss.
     model = load_minicpmo_model(config.model, init_token2wav=False)
     if config.path.paradigm in {"omniflow", "frontbrain"}:
-        # Thinker checkpoints already contain the added backchannel embedding row, so resize the
-        # base model before applying a warm-start checkpoint.
+        # Resize the base embedding before loading a Thinker checkpoint.
         from mcpmft.frontbrain.setup import ensure_native_frontbrain_tokens
 
         ids = ensure_native_frontbrain_tokens(model, tokenizer)

@@ -21,11 +21,11 @@ class SpeechSegment:
     text_token_ids: list[int]
     audio_ref_id: str
     s3_codes: list[int] | None = None
-    turn_group: int = 0  # consecutive agent utterances sharing a turn_group are one talker context (aggregate for inference parity)
-    is_turn_final: bool = True  # duplex_unit: only the final unit of a turn predicts audio_eos / resets TTS KV
-    should_predict_audio_eos: bool = True  # duplex_unit: complete final units predict audio_eos; interrupted/incomplete units do not
-    unit_index: int | None = None  # duplex_unit: ordinal speak unit within the streaming session/turn (debug/order)
-    real_text_token_count: int | None = None  # duplex_unit: text tokens only; excludes turn_eos/control for fixed S3 ratio slicing
+    turn_group: int = 0  # shared Talker context
+    is_turn_final: bool = True  # final duplex unit resets Talker KV
+    should_predict_audio_eos: bool = True
+    unit_index: int | None = None  # streaming order
+    real_text_token_count: int | None = None  # excludes control tokens
     unit_start_ms: int | None = None
     unit_end_ms: int | None = None
     meta: dict[str, Any] = field(default_factory=dict)
@@ -37,11 +37,11 @@ class SerializedSample:
     input_ids: list[int]
     labels: list[int]
     image_bounds: list[tuple[int, int]] = field(default_factory=list)
-    image_inputs: list[Any] = field(default_factory=list)  # ImageRef objects aligned with image_bounds
+    image_inputs: list[Any] = field(default_factory=list)  # aligned with image_bounds
     audio_bounds: list[tuple[int, int]] = field(default_factory=list)
-    audio_inputs: list[Any] = field(default_factory=list)  # AudioRef objects aligned with audio_bounds
+    audio_inputs: list[Any] = field(default_factory=list)  # aligned with audio_bounds
     speech_segments: list[SpeechSegment] = field(default_factory=list)
-    unit_ids: list[int] = field(default_factory=list)  # per-token unit index (omniflow/frontbrain sliding window); empty = single unit
+    unit_ids: list[int] = field(default_factory=list)  # per-token streaming unit
     meta: dict[str, Any] = field(default_factory=dict)
 
 
@@ -66,7 +66,7 @@ def serialize_turn_sample(
     audio_inputs: list[Any] = []
     speech_segments: list[SpeechSegment] = []
     structured_spans: list[tuple[int, int]] = []
-    turn_group = -1  # each assistant turn is its own talker context (per-turn KV reset at inference)
+    turn_group = -1
 
     turns = list(sample.turns)
     start_index = 0
@@ -104,10 +104,8 @@ def serialize_turn_sample(
 
         prefix = _encode(tokenizer, _role_prefix(turn.role))
         input_ids.extend(prefix)
-        # Official chat template injects an empty think block on the assistant generation prompt
-        # when enable_thinking is False: "<|im_start|>assistant\n<think>\n\n</think>\n\n".
-        # Mirror it as a NON-supervised constant prefix so the training assistant header matches
-        # what offline (apply_chat_template) and online (streaming bos_input) feed at inference.
+        # Match the empty think prefix used by offline and online inference when
+        # enable_thinking is false; the prefix itself is not supervised.
         if turn.role == "assistant" and not enable_thinking:
             input_ids.extend(_encode(tokenizer, "<think>\n\n</think>\n\n"))
         content_start = len(input_ids)
@@ -145,18 +143,16 @@ def serialize_turn_sample(
             structured_start = len(input_ids)
             input_ids.extend(_encode(tokenizer, format_tool_calls(turn.tool_calls)))
             structured_spans.append((structured_start, len(input_ids)))
-        # Turn terminator: <|im_end|> then newline (matches the model's chat template).
-        # For assistant turns the <|im_end|> MUST be supervised so the model learns to stop.
+        # Assistant supervision includes the chat-template turn terminator.
         im_end_id = _im_end_id(tokenizer)
         input_ids.append(im_end_id)
-        content_end = len(input_ids)  # includes <|im_end|> → supervised for assistant
+        content_end = len(input_ids)
         input_ids.extend(_encode(tokenizer, "\n"))
 
         if turn.role == "assistant" and (text_ids or turn.tool_calls):
-            # Span covers content + <|im_end|>; after the loss shift this teaches the token
-            # before <|im_end|> to emit it (i.e. learn to end the turn).
+            # The supervised span includes content and <|im_end|>.
             assistant_spans.append((content_start, content_end))
-            turn_group += 1  # distinct reply → distinct talker context
+            turn_group += 1
             if turn.speech_out is not None:
                 speech_segments.append(
                     SpeechSegment(
@@ -238,11 +234,8 @@ def _audio_placeholder(turn: Turn, geometry: AudioGeometry | None) -> list[int]:
     geometry = geometry or AudioGeometry()
     num_samples = turn.audio_in.meta.get("num_samples") if turn.audio_in and isinstance(getattr(turn.audio_in, "meta", None), dict) else None
     if num_samples is None and turn.audio_in is not None and turn.audio_in.path:
-        # Size the placeholder from the EXACT waveform the collator will feed to whisper. The
-        # collator calls load_audio_ref_waveform (channel select + slice + resample to 16k); a
-        # duration*sr estimate rounds differently from librosa's resampled length and drifts the
-        # placeholder by 1 vs the pooled feature count (crashes get_omni_embedding scatter). So we
-        # load the same waveform here and count its real samples — guaranteeing exact agreement.
+        # Derive placeholder length from the same sliced, resampled waveform used by
+        # the collator so audio bounds and pooled features remain aligned.
         try:
             from mcpmft.data.feature import load_audio_ref_waveform
 
@@ -332,9 +325,8 @@ def _shift_complete_speech_segments(
                 f"positions={len(positions)} token_ids={len(token_ids)} "
                 f"audio_ref_id={segment.audio_ref_id!r}"
             )
-        # S3 targets cover the whole segment. If truncation removes only part of its text
-        # condition, there is no reliable token-to-audio boundary at which to crop the S3 codes;
-        # drop that one damaged target rather than train it against misaligned audio.
+        # Drop an S3 target when truncation removes part of its text condition because
+        # the remaining codes have no reliable token boundary.
         if not positions or positions[0] < offset:
             continue
         shifted.append(

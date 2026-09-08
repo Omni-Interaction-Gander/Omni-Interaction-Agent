@@ -29,7 +29,7 @@ data:
   frontbrain_use_sample_pinned_context: true
   frontbrain_pinned_context_requires_marker: true
   public_video_root: null
-  # The compact examples carry their real v63 S3 targets inline.
+  # Release examples store S3 targets inline.
   s3_cache_dir: null
   duplex_text_tokens_per_unit: 8
   duplex_speech_tokens_per_unit: 50

@@ -526,5 +526,4 @@ The main deployment choices live in the same serving YAML:
 ## License
 
 The code in this repository is released under the
-[Apache License 2.0](LICENSE). Model weights and datasets may carry their own
-terms; refer to their respective release pages.
+[Apache License 2.0](LICENSE). 

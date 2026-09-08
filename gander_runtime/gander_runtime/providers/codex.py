@@ -94,8 +94,7 @@ _TASK_SCOPED_CONFIG: dict[str, Any] = {
     "web_search": "live",
 }
 _FULL_CONFIG: dict[str, Any] = {
-    # Full keeps the user's normal Codex surface, but Gander still needs native
-    # questions to reach the realtime interaction channel in Default mode.
+    # Full mode keeps the Codex surface and routes native questions to Gander.
     "features.default_mode_request_user_input": True,
 }
 _PULL_WORKER_INSTRUCTIONS = (
@@ -196,8 +195,7 @@ class CodexProviderConfig:
     side_query_timeout_sec: float = 45.0
     interaction_timeout_sec: float = 300.0
     runtime_profile: Literal["task_scoped", "full"] = "task_scoped"
-    # This only opens concurrency when project_config_factory resolves Projects
-    # to isolated workspaces. Shared workspaces retain one resource lock.
+    # Concurrency is enabled only for projects with isolated workspaces.
     max_parallel_projects: int = 1
 
 
@@ -386,7 +384,7 @@ CODEX_WORKER_CAPABILITIES = BackendCapabilities(
     authority_enforcement="backend_hook",
     structured_events="limited",
     trusted_risk_signals=False,
-    # Cross-process recovery still needs a native registry conformance pass.
+    # Validate the native registry after cross-process recovery.
     session_resume=False,
     modalities=frozenset({"text", "image"}),
     max_parallel_projects=1,
@@ -399,8 +397,7 @@ CODEX_WORKER_CAPABILITIES = BackendCapabilities(
 class CodexWorkerProvider:
     """Native Codex WorkerProvider with project and run lifecycles.
 
-    Context snapshots are deliberately empty; the run-scoped MCP surface is the
-    only route to history and memory.
+    History and memory are exposed through the run-scoped MCP surface.
     """
 
     name = "codex-app-server"
@@ -949,9 +946,7 @@ class _CodexRun:
                     "Codex thread/goal/clear is unavailable for BTW fork",
                     exc_info=True,
                 )
-            # A fork excludes the active main turn, including recent steer messages.
-            # Stage the bounded realtime snapshot independently so the side answer
-            # can still see the user's actual updates and current media context.
+            # Stage current realtime context separately for forked side queries.
             turn_response = await client.request(
                 "turn/start",
                 {
@@ -1015,10 +1010,7 @@ class _CodexRun:
             and reply.decision in {"deny", "decline", "cancel"}
             and reply.text.strip()
         ):
-            # Codex's approval RPC accepts only a discrete decision. Preserve
-            # the rest of the user's utterance as a real in-thread instruction
-            # rather than silently dropping alternatives such as "don't
-            # overwrite it; create a new file".
+            # Send approval through the RPC and retain remaining text as an instruction.
             await self._send_steer(
                 self._client(),
                 _approval_denial_inputs(reply.text),
@@ -1190,8 +1182,7 @@ class _CodexRun:
         try:
             side_config = self._read_only_config()
         finally:
-            # Never let startup cleanup mistake the retained parent for the
-            # ephemeral child when thread/fork itself fails.
+            # Track the child separately from its retained parent during startup.
             self.thread_id = None
         params: dict[str, Any] = {
             "threadId": parent_thread_id,

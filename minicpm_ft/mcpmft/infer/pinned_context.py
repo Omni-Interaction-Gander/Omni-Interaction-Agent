@@ -493,7 +493,7 @@ def install_context_slate(
     *,
     config: PinnedContextConfig,
 ) -> PinnedContextController:
-    """Pin only the live task slate; evicted units never become memory text."""
+    """Pin the live task slate without converting evicted units into memory text."""
     return _install_pinned_context(
         decoder,
         config=config,

@@ -56,7 +56,7 @@ def _mask_generation_logits(
                 if token_id is not None and 0 <= int(token_id) < vocab_size
             )
         )
-        # Lightweight tests may use a one-logit fake decoder with real tokenizer ids.
+        # Lightweight decoders may expose fewer logits than tokenizer IDs.
         if not valid:
             return constrained
         masked = constrained.new_full(constrained.shape, float("-inf"))
@@ -89,16 +89,10 @@ def _extract_decode_logits(
 
 @contextmanager
 def _allow_lexical_tool_tokens(decoder: Any, tokenizer: Any) -> Iterator[None]:
-    """Disable speech-only lexical masks while decoding a native tool action.
+    """Suspend speech lexical masks while decoding a native tool action.
 
-    MiniCPM-o initializes ``StreamDecoder.forbidden_token_ids`` with the tokenizer's
-    ``bad_token_ids`` for spoken-response generation. Native tool actions are text, and their
-    canonical supervised representation contains lexical tokens from that list (notably the
-    leading newline and common JSON-closing token). Applying the speech mask here makes the
-    decoder leave its trained trajectory and continue argument values indefinitely.
-
-    Keep all non-lexical/special-token restrictions intact, including the decoder's chunk-EOS
-    handling. Restore the exact original object on exit so dialogue/Talker decoding is unchanged.
+    Tool JSON uses lexical tokens filtered during speech generation. Special-token and
+    chunk-EOS restrictions remain active, and the original mask is restored on exit.
     """
 
     original = getattr(decoder, "forbidden_token_ids", None)
@@ -207,12 +201,7 @@ class DuplexParams:
     first_chunk_ms: int = 1035
     cnn_redundancy_ms: int = 20
     ls_mode: str = "explicit"
-    # The training serializer emits one action token, at most K lexical tokens, an optional turn
-    # terminator, and the chunk terminator. These MUST match the trained unit contract
-    # (data.duplex_text_tokens_per_unit / data.duplex_speech_tokens_per_unit): the decode loop
-    # force-closes a speak unit once `speak_text_tokens_per_unit` lexical tokens are emitted, so a
-    # value below the trained K silently truncates generation. Serving configurations must set
-    # this to the same value as data.duplex_text_tokens_per_unit used for training.
+    # Match the lexical-token count used by data.duplex_text_tokens_per_unit in training.
     speak_text_tokens_per_unit: int = 4
     max_new_speak_tokens_per_chunk: int = 7
     max_new_tool_tokens: int = 96
@@ -220,8 +209,7 @@ class DuplexParams:
     max_tool_calls_per_unit: int = MAX_TOOL_CALLS_PER_UNIT
     max_tool_schemas: int = 6
     max_tool_schema_tokens: int = 1024
-    # Keep the model-visible prefix identical to training by default. Deployments that
-    # deliberately trained with a live clock hint may opt in explicitly.
+    # Live clock hints are enabled only for models trained with them.
     inject_search_time_context: bool = False
     decode_mode: Literal["sampling", "greedy"] = "sampling"
     generate_audio: bool = True
@@ -239,12 +227,10 @@ class DuplexParams:
     memory_soft_ratio: float = 0.9
     memory_hard_ratio: float = 1.0
     memory_kv_ceiling_units: int | None = None
-    # Talker generation uses one look-ahead token internally, so an S-token non-final unit is
-    # requested as max_new_token=S+1. The final unit uses the remaining decoder context and may
-    # continue until S3 EOS.
-    # Must match data.duplex_speech_tokens_per_unit in the training configuration.
+    # Match data.duplex_speech_tokens_per_unit; non-final Talker units add one
+    # internal look-ahead token.
     talker_speech_tokens_per_unit: int = 25
-    # Zero lets the final unit continue until S3 EOS or the decoder context limit.
+    # Zero lets the final unit continue to S3 EOS or the context limit.
     talker_final_speech_tokens_max: int = 0
 
 
@@ -286,8 +272,7 @@ class OnlineRunner:
             CONTEXT_MEMORY,
             CONTEXT_SLATE,
         }:
-            # Keep upstream context-mode preparation and enforcement dispatch. The decoder patch
-            # replaces only the selected context policy; existing modes remain unchanged.
+            # Replace only the selected context policy in the upstream decoder.
             duplex_kwargs["sliding_window_mode"] = "context"
         if requested_window_mode == CONTEXT_NO_PREVIOUS:
             duplex_kwargs["context_previous_max_tokens"] = 0
@@ -361,11 +346,7 @@ class OnlineRunner:
             )
         if ref_audio_path:
             kwargs["prompt_wav_path"] = ref_audio_path
-        # MiniCPMODuplex.prepare() resets its decoder and mel processor, but the shared base
-        # MiniCPMO keeps Whisper's streaming KV in model.audio_past_key_values.  Reusing one base
-        # model across serialized web sessions would otherwise let a new session inherit several
-        # seconds of the preceding session's audio state.  Reset the base streaming session before
-        # prefilling the immutable system/tool prefix.
+        # Reset the base model's streaming audio KV before prefilling a new session.
         _reset_shared_model_streaming_session(self.duplex.model)
         self.duplex.prepare(**kwargs)
         if self.pinned_context is not None:
@@ -381,7 +362,7 @@ class OnlineRunner:
         token2wav_state = None
         if self.params.generate_audio and self.duplex.token2wav_initialized:
             token2wav_state = {
-                # prompt_wav=None is valid only while this initialized prompt cache exists.
+                # prompt_wav=None reuses this initialized prompt cache.
                 "audio_tokenizer_cache": _clone_tensor_tree(
                     self.duplex.model.tts.audio_tokenizer.cache
                 ),
@@ -507,8 +488,7 @@ class OnlineRunner:
                     "is_interrupt": True,
                     "text": "",
                     "audio_waveform": None,
-                    # An interrupt closes the in-flight assistant turn, but it must not make
-                    # a file/live runner stop before the user's correction is complete.
+                    # Interrupt closes the active assistant turn while input continues.
                     "end_of_turn": False,
                     "n_tts_tokens": 0,
                 }
@@ -559,10 +539,8 @@ class OnlineRunner:
                 f"duplex rejected tool response: {result.get('reason') or 'unknown reason'}"
             )
 
-        # MiniCPM-o 4.5 accepts audio_waveform + text_list, but its mixed-mode path keeps
-        # pending_logits from the audio position after feeding the text without return_logits.
-        # Feed the bounded text into the already-open unit ourselves and refresh logits at the
-        # actual final input position. This preserves causal audio -> tool-response -> action order.
+        # Feed mixed-mode text explicitly so pending logits follow the final text
+        # position and preserve audio -> tool response -> action order.
         decoder = getattr(self.duplex, "decoder", None)
         if decoder is None:
             raise RuntimeError("duplex tool response prefill requires decoder access")
@@ -673,9 +651,7 @@ class OnlineRunner:
         token = first_token
         ended = False
         budget = max(4, int(self.params.max_new_tool_tokens))
-        # The upstream decoder's bad-token list is a speech-generation constraint. Tool JSON is
-        # native text and must be able to follow the exact tokenization used by training. This
-        # scope changes no protocol grammar and deliberately permits multiple ordered tool calls.
+        # Tool JSON follows training tokenization rather than speech-generation token filters.
         with _allow_lexical_tool_tokens(decoder, self.bundle.tokenizer):
             with torch.no_grad():
                 for index in range(budget):
@@ -880,7 +856,7 @@ class OnlineRunner:
             setattr(duplex, name, value)
         duplex._reset_token2wav_for_new_turn()
         if duplex.decoder._unit_history:
-            # Interrupt is a control-only unit and should not retain assistant content.
+            # Interrupt is a control-only unit.
             duplex.decoder._unit_history[-1]["is_listen"] = True
 
     def run_audio_file(
@@ -891,15 +867,10 @@ class OnlineRunner:
         trailing_silence_sec: float = 20.0,
         stop_on_turn_end: bool = True,
     ) -> list[dict]:
-        """Stream a mono audio file through the duplex model, 1s at a time.
+        """Stream mono audio through the duplex model in one-second units.
 
-        Training uses an ALWAYS-ON mic: after the user stops talking, the serializer keeps emitting
-        1s SILENCE audio blocks for the whole answer, and the model is supervised to <|speak|> over
-        them. So at inference we must ALSO keep feeding silence after the file's audio ends —
-        otherwise a long reply (or any reply that only starts once the user finishes) is truncated,
-        because streaming_generate has no further chunk to hang the speak units on (see the old
-        EOF-only loop). We feed up to `trailing_silence_sec` of silence and stop early once the model
-        signals end_of_turn (after having spoken), matching a single completed response.
+        After file audio ends, trailing microphone silence lets the model complete the
+        response under the same always-on input pattern used in training.
         """
         import numpy as np
 
@@ -928,11 +899,11 @@ class OnlineRunner:
                     spoke_any = True
             return out
 
-        # 1) real audio from the file
+        # Replay file audio.
         for chunk in iter_audio_chunks(audio_path, chunk_ms=self.params.chunk_ms):
             step(chunk)
 
-        # 2) trailing always-on-mic silence so the answer can complete (matches training)
+        # Continue with microphone silence until the answer completes.
         max_silence_chunks = int(round(trailing_silence_sec * 1000 / self.params.chunk_ms))
         for _ in range(max_silence_chunks):
             out = step(silence)
@@ -1010,13 +981,10 @@ def configure_duplex_talker_generation(
     speech_tokens_per_unit: int,
     final_speech_tokens_max: int,
 ) -> None:
-    """Apply the K-text/S-S3 streaming cadence without capping the final speech remainder.
+    """Apply the K-text/S-S3 cadence and final-unit continuation.
 
-    MiniCPM-o 4.5 intentionally withholds its newest prediction, so requesting N visible codes
-    requires ``max_new_token=N+1``. Non-final units expose exactly the configured S3 count. Once
-    Thinker emits turn EOS, Talker may emit zero or more remaining codes until S3 EOS; the only
-    implicit bound is its remaining positional context. A positive final cap remains available as
-    an operational limit, but is not part of the training unit contract.
+    MiniCPM-o 4.5 holds one look-ahead prediction, so N visible codes request N+1.
+    After Thinker turn EOS, Talker continues to S3 EOS, a configured cap, or its context limit.
     """
     unit_codes = int(speech_tokens_per_unit)
     final_codes = int(final_speech_tokens_max)
@@ -1043,7 +1011,7 @@ def configure_duplex_talker_generation(
             owner.interrupt_token_id,
             owner._mcpmft_unit_end_token_id,
         ]:
-            # Interrupt is a control-only unit and must not advance Talker/token2wav state.
+            # Interrupt does not advance Talker or Token2wav state.
             import torch
 
             inputs_embeds = kwargs.get("inputs_embeds")

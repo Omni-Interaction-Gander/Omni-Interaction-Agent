@@ -68,9 +68,7 @@ class _WeightedBucket:
         self.cumulative: list[float] = []
         total = 0.0
         for entry in self.entries:
-            # One long recording represents many independently sampled virtual windows. Weighting
-            # by that count lets a multi-hour recording contribute more than a single ten-second
-            # clip without physically duplicating either waveform or index rows.
+            # Weight long recordings by their number of independently sampled windows.
             total += float(max(1, entry.virtual_windows))
             self.cumulative.append(total)
         self.total = total
@@ -97,7 +95,7 @@ class _WeightedBucket:
             selected = self.entries[index]
             if selected.id not in excluded:
                 return selected
-        # This guarantees progress when a heavily weighted long recording was quarantined.
+        # Continue sampling after a weighted recording is quarantined.
         return next(entry for entry in self.entries if entry.id not in excluded)
 
 
@@ -171,11 +169,11 @@ class NoiseCatalog:
 
 
 class NoiseReadError(LookupError):
-    """Optional augmentation noise could not be decoded after bounded failover."""
+    """Raised for undecodable augmentation noise."""
 
 
 class NoiseArchiveCache:
-    """Materialize compressed archive members once, safely across ranks and workers."""
+    """Materialize compressed archive members once across ranks and workers."""
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
@@ -240,7 +238,7 @@ class NoiseStreamSampler:
         self.sample_rate = int(sample_rate)
         self.crossfade_samples = max(0, int(crossfade_ms * self.sample_rate / 1000))
         self.max_segment_samples = max(1, int(max_segment_seconds * self.sample_rate))
-        # Each DataLoader worker owns its sampler, so this quarantine is process-local and cheap.
+        # Quarantine is local to each DataLoader worker.
         self._quarantined_entry_ids: set[str] = set()
 
     def sample_stream(
@@ -417,8 +415,7 @@ class NoiseStreamSampler:
                     wraps += 1
                     continue
                 part = np.asarray(values[:, channel], dtype=np.float32)
-                # Always keep at least half of a short recording so tiny clips cannot make a
-                # wrapping stream grow one sample at a time.
+                # Retain at least half of short recordings in wrapping streams.
                 actual_overlap = min(overlap, len(waveform), len(part) // 2)
                 if actual_overlap:
                     phase = np.linspace(
@@ -1562,8 +1559,7 @@ def _convolve_causal_same_length(
     if waveform.size == 0 or impulse.size == 0:
         return np.asarray(waveform, dtype=np.float32)
     result = fftconvolve(waveform, impulse, mode="full")[: len(waveform)]
-    # FFT round-off can leave ~1e-10 energy before a mathematically causal onset. Clamp it so
-    # serialized far-end echo has a strict no-future-leak contract, not just an approximate one.
+    # Clamp FFT round-off before the causal echo onset.
     result[np.abs(result) < 1e-8] = 0.0
     return np.asarray(result, dtype=np.float32)
 

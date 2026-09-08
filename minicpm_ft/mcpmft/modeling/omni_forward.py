@@ -46,7 +46,7 @@ class OmniTrainWrapper(nn.Module):
 
     @property
     def config(self):
-        # DeepSpeed / HF Trainer read .config on the top-level module for hidden_size, etc.
+        # DeepSpeed and Trainer read model metadata from the top-level config.
         return self.model.config
 
     @property
@@ -79,8 +79,7 @@ class OmniTrainWrapper(nn.Module):
         inputs_embeds = self._build_inputs_embeds(batch)
         llm = self._llm()
         attention_mask = batch.get("attention_mask")
-        # A 4D additive KV-delete mask (built float32 by the collator) must match the compute
-        # dtype, or SDPA raises "invalid dtype for bias". 2D padding masks stay long.
+        # SDPA requires the 4D additive mask to match the compute dtype.
         if attention_mask is not None and attention_mask.dim() == 4 and attention_mask.is_floating_point():
             attention_mask = attention_mask.to(inputs_embeds.dtype)
         llm_kwargs = {
@@ -89,13 +88,11 @@ class OmniTrainWrapper(nn.Module):
             "attention_mask": attention_mask,
             "position_ids": batch.get("position_ids"),
             "output_hidden_states": output_hidden_states,
-            # Training is full-sequence teacher forcing; retaining incremental KV tensors only
-            # increases memory and is not consumed by either loss path.
+            # Full-sequence teacher forcing does not retain incremental KV tensors.
             "use_cache": False,
         }
         if not need_text:
-            # The audio loss needs all hidden states but no vocabulary projection. Keep one logits
-            # position for the output contract instead of materializing BxLxV.
+            # Audio-only loss retains hidden states without materializing BxLxV logits.
             llm_kwargs["logits_to_keep"] = 1
         out = llm(**llm_kwargs)
         logits = out.logits
@@ -106,9 +103,7 @@ class OmniTrainWrapper(nn.Module):
             shift_logits = logits[:, :-1, :].contiguous()
             shift_labels = labels[:, 1:].contiguous()
             if self.control_loss_weight != 1.0:
-                # Per-token weighted CE: upweight the full-duplex control tokens (listen/speak/
-                # interrupt/chunk_eos/turn_eos/backchannel) so the model learns turn-taking timing
-                # harder (fixes premature-speak). reduction='none' → weight → normalize by sum.
+                # Weighted CE emphasizes full-duplex control and boundary tokens.
                 flat_logits = shift_logits.view(-1, shift_logits.size(-1))
                 flat_labels = shift_labels.view(-1)
                 per_tok = _cross_entropy_fp32(
@@ -121,7 +116,7 @@ class OmniTrainWrapper(nn.Module):
                 ctrl_ids = self._control_token_ids(labels.device)
                 is_ctrl = torch.isin(flat_labels, ctrl_ids)
                 weights = torch.where(is_ctrl, weights * self.control_loss_weight, weights)
-                # zero the ignored positions so they don't count toward the normalizer
+                # Exclude ignored positions from the normalizer.
                 valid = flat_labels != IGNORE_INDEX
                 weights = weights * valid
                 text_loss = self._normalize_loss_sum((per_tok * weights).sum(), weights.sum())
@@ -160,8 +155,7 @@ class OmniTrainWrapper(nn.Module):
         has_vision = "pixel_values" in batch and "tgt_sizes" in batch and "image_bound" in batch
         has_audio = "audio_features" in batch and "audio_bounds" in batch
 
-        # get_vllm_embedding hard-requires pixel_values/tgt_sizes/image_bound even for text-only
-        # batches; only use it when the vision keys are present. Otherwise embed text directly.
+        # Use get_vllm_embedding only when vision inputs are present.
         if has_vision:
             inputs_embeds, _ = self.model.get_vllm_embedding(batch)
         else:
@@ -480,8 +474,7 @@ def _cross_entropy_fp32(logits, labels, **kwargs):
         or (logits.device.type == "cpu" and logits.dtype == torch.bfloat16)
     )
     if use_autocast:
-        # Cross entropy is an fp32 autocast op. This avoids the severe rounding of a BF16
-        # reduction=sum without explicitly materializing another full fp32 logits tensor.
+        # Cross entropy accumulates in fp32 without another full logits tensor.
         with torch.autocast(
             device_type=logits.device.type,
             dtype=logits.dtype,

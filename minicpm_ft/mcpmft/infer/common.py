@@ -28,16 +28,14 @@ def load_for_infer(
     init_token2wav: bool = True,
     load_processor: bool = True,
 ) -> InferBundle:
-    # Training checkpoints may contain only trainable tensors. Validate their local paths before
-    # constructing the model; the composed loader fills frozen tensors from the base model.
+    # Composed loading fills frozen tensors from the base model.
     for label, value in (
         ("checkpoint", checkpoint),
         ("talker checkpoint", talker_checkpoint),
     ):
         if value and not Path(value).exists():
             raise FileNotFoundError(f"{label.capitalize()} not found: {value}")
-    # The shared model loader defaults to the non-streaming scatter path required by batched
-    # training. Inference must preserve the model's streaming embedding path instead.
+    # Inference retains the model's streaming embedding path.
     inference_args = replace(model_args, train_disable_stream_input=False)
     if load_processor:
         tokenizer, processor = load_tokenizer_and_processor(
@@ -45,9 +43,7 @@ def load_for_infer(
             tokenizer_path=checkpoint,
         )
     else:
-        # Realtime duplex inference consumes the tokenizer and the model's native streaming
-        # audio processor; it never calls the multimodal AutoProcessor.  Offline replay can skip
-        # constructing it, avoiding unrelated image/video dependencies during checkpoint loads.
+        # Offline duplex replay can use the native streaming audio processor directly.
         from transformers import AutoTokenizer
 
         tokenizer = AutoTokenizer.from_pretrained(
@@ -78,9 +74,7 @@ def load_for_infer(
     if model_processor is not None:
         model_processor.tokenizer = tokenizer
     if talker_checkpoint:
-        # Overlay ONLY the talker (tts.*) weights from a separately-trained T2S checkpoint,
-        # leaving the thinker (llm/audio_projection_layer) from `checkpoint` intact. This lets us
-        # mix-and-match a new thinker with a new talker that were trained in separate jobs.
+        # Overlay tts.* weights while retaining Thinker weights from checkpoint.
         from mcpmft.modeling.load import load_prefixed_state_dict
 
         n = load_prefixed_state_dict(model, talker_checkpoint, prefix="tts.")

@@ -112,8 +112,7 @@ class ManifestDataset(_IterableBase):
 
     def _count_filtered_rows(self) -> int:
         if self.max_audio_seconds is None:
-            # Length discovery runs once on every rank. Avoid parsing potentially hundreds of MB
-            # of JSON when no content-based duration filter is requested.
+            # Count lines directly when no content-based duration filter is active.
             return sum(self._get_effective_source_lengths())
 
         from mcpmft.data.sample import sample_total_audio_ms
@@ -173,8 +172,7 @@ class ManifestDataset(_IterableBase):
         emitted = [0] * len(iterators)
         active = {index for index, length in enumerate(lengths) if length > 0}
         while active:
-            # Weighted fair queuing: pick the source with the least normalized progress.  With
-            # default weights=row counts, all sources finish together and stay evenly interleaved.
+            # Weighted fair queuing selects the source with least normalized progress.
             index = min(active, key=lambda idx: (emitted[idx] / weights[idx], idx))
             try:
                 row = next(iterators[index])
@@ -216,13 +214,13 @@ class ManifestDataset(_IterableBase):
         total_shards = rank_world * worker_world
         shard_id = rank_id * worker_world + worker_id
         cap_ms = None if self.max_audio_seconds is None else self.max_audio_seconds * 1000
-        kept = 0  # index AFTER filtering, so rank shards stay balanced (counts differ by <=1)
+        kept = 0  # post-filter index used for balanced rank sharding
         for row in self._iter_raw_rows():
             sample = OmniSample.from_dict(row)
             if self.media_resolver is not None:
                 self.media_resolver.resolve_sample(sample)
             if cap_ms is not None and sample_total_audio_ms(sample) > cap_ms:
-                continue  # drop over-long sample (bounds OOM / per-rank length variance)
+                continue
             if total_shards > 1 and kept % total_shards != shard_id:
                 kept += 1
                 continue

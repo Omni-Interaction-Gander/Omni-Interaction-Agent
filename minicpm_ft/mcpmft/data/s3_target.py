@@ -62,8 +62,7 @@ class S3TokenCache:
 
     def path_for_id(self, audio_ref_id: str) -> Path:
         digest = hashlib.sha1(audio_ref_id.encode("utf-8")).hexdigest()
-        # Keep large corpora out of a single million-entry directory. One hash-prefix level gives
-        # 256 balanced directories while preserving deterministic lookup.
+        # Partition large caches by one hash-prefix level.
         return self.cache_dir / digest[:2] / f"{digest[2:24]}.npy"
 
     def get(self, audio_ref: AudioRef) -> list[int] | None:
@@ -92,8 +91,7 @@ class S3TokenCache:
         try:
             return int(values.size)
         finally:
-            # Explicitly release the mmap before the next tiny cache file is opened. Corpus-wide
-            # corpus scans can otherwise accumulate file descriptors faster than collection.
+            # Release each mmap before opening the next cache file.
             mmap = getattr(values, "_mmap", None)
             if mmap is not None:
                 mmap.close()
