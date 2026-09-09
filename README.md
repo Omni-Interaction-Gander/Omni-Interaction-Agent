@@ -1,8 +1,9 @@
-<h1 align="center">Gander</h1>
+<h1 align="center">Gander: Omni Interaction Agent</h1>
 
 <p align="center">
-  <strong>Omni Interaction Agent</strong><br>
-  <sub>Natural voice interaction, continuous omni perception, and long-horizon agentic execution in one system.</sub>
+  <!-- <strong>Omni Interaction Agent</strong><br> -->
+  <strong>Natural voice interaction, continuous omni perception, and long-horizon agentic execution in one system.</strong><br>
+  <!-- <sub>Natural voice interaction, continuous omni perception, and long-horizon agentic execution in one system.</sub> -->
 </p>
 
 <p align="center">
