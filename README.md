@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/Omni%20Interaction%20Agent%20Technical%20Report.pdf"><img src="https://img.shields.io/badge/Paper-PDF-C62828?style=flat-square" alt="Paper PDF"></a>
+  <a href="https://arxiv.org/abs/2609.08977"><img src="https://img.shields.io/badge/Paper-arXiv-C62828?style=flat-square" alt="Gander paper on arXiv"></a>
   <a href="https://Omni-Interaction-Gander.github.io/Omni-Interaction-Agent"><img src="https://img.shields.io/badge/Demo-Project_Page-2563EB?style=flat-square" alt="Gander project page"></a>
   <a href="#resources"><img src="https://img.shields.io/badge/Dataset-Coming_Soon-059669?style=flat-square" alt="Dataset coming soon"></a>
   <a href="https://huggingface.co/Gander-Omni/Gander"><img src="https://img.shields.io/badge/Model-Hugging_Face-D97706?style=flat-square" alt="Gander model on Hugging Face"></a>
@@ -29,7 +29,8 @@
   <a href="#evaluation">Evaluation</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#training">Training</a> ·
-  <a href="#offline-inference">Inference</a>
+  <a href="#offline-inference">Inference</a> ·
+  <a href="#citation">Citation</a>
 </p>
 
 ---
@@ -501,10 +502,28 @@ The main deployment choices live in the serving YAML:
 
 | Resource | Link |
 | --- | --- |
-| Paper | [Omni Interaction Agent Technical Report](docs/Omni%20Interaction%20Agent%20Technical%20Report.pdf) |
+| Paper | [arXiv:2609.08977](https://arxiv.org/abs/2609.08977) |
 | Model | [Gander-Omni/Gander](https://huggingface.co/Gander-Omni/Gander) |
 | Dataset | Coming soon |
 | Demo | [Project page](https://Omni-Interaction-Gander.github.io/Omni-Interaction-Agent) · [YouTube](https://youtu.be/-HFTZaZkfEU) |
+
+<a id="citation"></a>
+
+## 📝 Citation
+
+If you find Gander useful in your research, please cite:
+
+```bibtex
+@misc{orantqing2026omniinteractionagenttechnical,
+  title={Omni Interaction Agent Technical Report},
+  author={Orantqing and Shengpeng Ji and Junlong Tong and Jialong Zuo and Dongjie Fu and Di Cao and Yangzhuo Li and Shangda Wu and Franz and Evan and Theron Veyra and Changhao Pan and Jingyu Lu and Dongchao Yang and Zhifei Xie and Yang Tan and Xiaoyu Shen and Xiaoda Yang and Wenfu Wang and Teddysun and Steveyves and Zhou Zhao and Bryanytian},
+  year={2026},
+  eprint={2609.08977},
+  archivePrefix={arXiv},
+  primaryClass={eess.AS},
+  url={https://arxiv.org/abs/2609.08977},
+}
+```
 
 <a id="license"></a>
 
