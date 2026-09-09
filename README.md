@@ -47,7 +47,7 @@
 
 **Gander is an open-source, end-to-end omni interaction agent that keeps the conversation flowing while getting work done.** It unifies natural voice chat, native full-duplex interaction, and continuous multimodal perception—so you can speak, interrupt, or share your screen while work continues.
 
-Trained for spoken collaboration, Gander combines **natural, expressive dialogue with competitive knowledge and instruction-following performance**. Its **Brain–Cerebellum architecture** pairs a capable streaming conversational model with an asynchronous reasoning agent, bringing responsive interaction and long-running execution into the same conversation.
+Trained for spoken collaboration, Gander combines **natural, expressive dialogue with competitive knowledge and instruction-following performance**. Its **Cerebellum-Brain architecture** pairs a capable streaming conversational model with an asynchronous reasoning agent, bringing responsive interaction and long-running execution into the same conversation.
 
 - **Natural conversation, learned interaction.** Turn-taking, backchannels, overlap handling, interruption, and proactive responses are learned model behaviors. Gander learns both what to say and when to say it.
 - **See and hear as events unfold.** Speech, video, and text share a causal timeline, grounding dialogue in your words, your screen, and the changing scene around you.
