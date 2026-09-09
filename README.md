@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Omni Interaction Agent</strong><br>
-  <sub>Natural voice conversation, continuous omni perception, and long-horizon agentic execution in one system.</sub>
+  <sub>Natural voice interaction, continuous omni perception, and long-horizon agentic execution in one system.</sub>
 </p>
 
 <p align="center">
