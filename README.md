@@ -1,7 +1,6 @@
-<h1 align="center">Gander</h1>
+<h1 align="center">Gander: Duplex Interaction Agent Technical Report</h1>
 
 <p align="center">
-  <strong>Duplex Interaction Agent Technical Report</strong><br>
   <sub>Natural voice interaction, continuous multimodal perception, and long-horizon agentic execution in one system.</sub>
 </p>
 
