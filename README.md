@@ -1,7 +1,7 @@
 <h1 align="center">Gander: Duplex Interaction Agent Technical Report</h1>
 
 <p align="center">
-  <sub>Natural voice interaction, continuous multimodal perception, and long-horizon agentic execution in one system.</sub>
+  <sub>Natural voice interaction, continuous multimodal perception, and long-horizon agentic execution in one system.<strong></sub>
 </p>
 
 <p align="center">
