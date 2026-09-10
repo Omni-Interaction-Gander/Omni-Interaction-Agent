@@ -39,6 +39,7 @@
 
 ## 📰 News
 
+- **2026-09-10:** The dataset is currently undergoing the open source release process and will be made publicly available soon.
 - **2026-09-09:** Gander is officially released.
 
 <a id="overview"></a>
