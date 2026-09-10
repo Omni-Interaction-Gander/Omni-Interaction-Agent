@@ -500,7 +500,7 @@ function appendArchivedMessage(parent, message) {
   const meta = document.createElement('div');
   meta.className = 'message-meta';
   const label = document.createElement('span');
-  label.textContent = message.role === 'user' ? 'User' : 'Omni-Interaction-Agent';
+  label.textContent = message.role === 'user' ? 'User' : 'Gander';
   const timing = document.createElement('time');
   timing.textContent = message.timing || '--';
   meta.append(label, timing);
@@ -657,7 +657,7 @@ function createMessage(role, start, end, pending = false) {
   const meta = document.createElement('div');
   meta.className = 'message-meta';
   const label = document.createElement('span');
-  label.textContent = role === 'user' ? 'User' : 'Omni-Interaction-Agent';
+  label.textContent = role === 'user' ? 'User' : 'Gander';
   const timing = document.createElement('time');
   timing.textContent = `${formatTime(start, true)} - ${formatTime(end, true)}`;
   meta.append(label, timing);

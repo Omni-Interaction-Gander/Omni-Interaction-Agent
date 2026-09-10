@@ -1,9 +1,8 @@
-<h1 align="center">Gander: Omni Interaction Agent</h1>
+<h1 align="center">Gander</h1>
 
 <p align="center">
-  <!-- <strong>Omni Interaction Agent</strong><br> -->
-  <strong>Natural voice interaction, continuous omni perception, and long-horizon agentic execution in one system.</strong><br>
-  <!-- <sub>Natural voice interaction, continuous omni perception, and long-horizon agentic execution in one system.</sub> -->
+  <strong>Duplex Interaction Agent Technical Report</strong><br>
+  <sub>Natural voice interaction, continuous multimodal perception, and long-horizon agentic execution in one system.</sub>
 </p>
 
 <p align="center">
@@ -46,9 +45,9 @@
 
 ## ✨ Overview
 
-**Gander is an open-source, end-to-end omni interaction agent that keeps the conversation flowing while getting work done.** It unifies natural voice chat, native full-duplex interaction, and continuous multimodal perception—so you can speak, interrupt, or share your screen while work continues.
+**Gander is an open-source native duplex interaction model with an asynchronous agent loop.** It brings natural voice conversation, continuous multimodal perception, and long-horizon task execution into one live interaction, so users can speak, interrupt, redirect, or share their screen while work continues.
 
-Trained for spoken collaboration, Gander combines **natural, expressive dialogue with competitive knowledge and instruction-following performance**. Its **Cerebellum-Brain architecture** pairs a capable streaming conversational model with an asynchronous reasoning agent, bringing responsive interaction and long-running execution into the same conversation.
+Trained for spoken collaboration, Gander combines **natural, expressive dialogue with knowledge and instruction-following capabilities**. Its **Cerebellum-Brain architecture** pairs a streaming conversational model with an asynchronous reasoning agent, bringing responsive interaction and long-running execution into the same conversation.
 
 - **Natural conversation, learned interaction.** Turn-taking, backchannels, overlap handling, interruption, and proactive responses are learned model behaviors. Gander learns both what to say and when to say it.
 - **See and hear as events unfold.** Speech, video, and text share a causal timeline, grounding dialogue in your words, your screen, and the changing scene around you.
@@ -60,7 +59,7 @@ Trained for spoken collaboration, Gander combines **natural, expressive dialogue
 
 <p align="center">
   <a href="https://youtu.be/-HFTZaZkfEU">
-    <img src="docs/assets/omni.png" alt="Watch the Gander demo on YouTube" width="90%">
+    <img src="docs/assets/gander-demo.png" alt="Watch the Gander demo on YouTube" width="90%">
   </a><br>
   <a href="https://youtu.be/-HFTZaZkfEU"><strong>▶ Watch the Gander demo on YouTube</strong></a>
 </p>
@@ -171,23 +170,20 @@ tool surface and receives Gander-specific interfaces:
 
 ## 📊 Evaluation
 
-The technical report evaluates conversational ability, full-duplex interaction,
-agentic execution, and omni understanding. Human evaluation confirms that
-Gander delivers natural, expressive, and highly conversational speech. This
-spoken quality is matched by strong instruction-following and knowledge
-performance: across 2,052 benchmark utterances, Gander leads the full-duplex
-streaming group on both SpokenQA subsets and places second on both VoiceBench
-subsets. After adding native full-duplex interaction and agentic capabilities,
-it also preserves strong audio-visual understanding, reaching 78.53% accuracy
-on Daily-Omni.
+The report evaluates conversational ability, full-duplex interaction,
+multimodal understanding, and tool-assisted task execution. Human evaluation
+indicates that Gander maintains natural and expressive spoken dialogue. Across
+2,052 benchmark utterances, it is evaluated on SpokenQA and VoiceBench under a
+full-duplex streaming setting. It reaches 49.62% accuracy on WorldSense and
+78.53% on Daily-Omni after full-duplex and agentic post-training.
 
 | Capability | Evaluation | Result |
 | --- | --- | ---: |
-| Spoken knowledge and QA | SpokenQA, Llama Questions / Web Questions | 75.60 / 59.30; best in the full-duplex group on both subsets |
-| Spoken instruction and dialogue | VoiceBench, AlpacaEval / SD-QA | 3.96 / 5 and 46.84%; second in the full-duplex group on both subsets |
+| Spoken knowledge and QA | SpokenQA, Llama Questions / Web Questions | 75.60 / 59.30 |
+| Spoken instruction and dialogue | VoiceBench, AlpacaEval / SD-QA | 3.96 / 5 and 46.84% |
 | Interaction timing | Full-Duplex-Bench v3 | 100% appropriate turn-taking; 8.0% premature interruption |
-| Agentic delivery | Delegated Full-Duplex-Bench scenarios | 45 / 45 final responses correctly bound |
-| Audio-visual understanding | Daily-Omni | 78.53% accuracy after full-duplex and agentic post-training |
+| Tool-assisted execution | Full-Duplex-Bench v3 | 0.759 tool-selection F1; 0.503 argument accuracy; 0.400 strict Pass@1 |
+| Audio-visual understanding | WorldSense / Daily-Omni | 49.62% / 78.53% accuracy |
 
 <a id="quick-start"></a>
 
@@ -305,7 +301,7 @@ YAMLs in order, and applies dotted command-line overrides last.
 ### Data and train-serve alignment
 
 <p align="center">
-  <img src="docs/assets/agent-data-pipeline.png" alt="Gander audio-agent and omni-agent data construction pipelines" width="92%"><br>
+  <img src="docs/assets/agent-data-pipeline.png" alt="Gander audio-agent and multimodal-agent data construction pipelines" width="92%"><br>
   <sub>Training examples preserve the causal unit timeline and task lifecycle used by the deployed system.</sub>
 </p>
 
@@ -489,13 +485,13 @@ The main deployment choices live in the serving YAML:
 | Path | Contents |
 | --- | --- |
 | `minicpm_ft/mcpmft/data/` | Manifest loading, media resolution, augmentation, temporal serialization, collation, and S3 targets. |
-| `minicpm_ft/mcpmft/modeling/` | Model loading, trainable-module selection, omni forward path, and streaming acoustic features. |
+| `minicpm_ft/mcpmft/modeling/` | Model loading, trainable-module selection, multimodal forward path, and streaming acoustic features. |
 | `minicpm_ft/mcpmft/infer/` | Turn-based and chunk-wise inference, context windows, detached Talker, ASR, and browser client. |
 | `gander_runtime/gander_runtime/` | Realtime transport, media timeline, task gateway, ledger, context routing, worker events, and supervision. |
 | `gander_runtime/gander_runtime/providers/` | Typed Brain provider registry, capabilities, factory, and Codex adapter. |
 | `minicpm_ft/examples/release/` | Self-contained Thinker and Talker examples with local media. |
 | `scripts/` | Stable entry points for data validation, training, offline inference, and serving. |
-| `docs/` | Technical report and selected system figures. |
+| `docs/` | Paper and selected system figures. |
 
 <a id="resources"></a>
 
@@ -503,7 +499,7 @@ The main deployment choices live in the serving YAML:
 
 | Resource | Link |
 | --- | --- |
-| Paper | [arXiv:2609.08977](https://arxiv.org/abs/2609.08977) |
+| Paper | [arXiv:2609.08977](https://arxiv.org/abs/2609.08977) · [PDF](docs/Duplex_Interaction_Agent_Technical_Report.pdf) |
 | Model | [Gander-Omni/Gander](https://huggingface.co/Gander-Omni/Gander) |
 | Dataset | Coming soon |
 | Demo | [Project page](https://Omni-Interaction-Gander.github.io/Omni-Interaction-Agent) · [YouTube](https://youtu.be/-HFTZaZkfEU) |
@@ -516,13 +512,13 @@ If you find Gander useful in your research, please cite:
 
 ```bibtex
 @misc{orantqing2026omniinteractionagenttechnical,
-  title={Omni Interaction Agent Technical Report},
-  author={Orantqing and Shengpeng Ji and Junlong Tong and Jialong Zuo and Dongjie Fu and Di Cao and Yangzhuo Li and Shangda Wu and Franz and Evan and Theron Veyra and Changhao Pan and Jingyu Lu and Dongchao Yang and Zhifei Xie and Yang Tan and Xiaoyu Shen and Xiaoda Yang and Wenfu Wang and Teddysun and Steveyves and Zhou Zhao and Bryanytian},
-  year={2026},
-  eprint={2609.08977},
-  archivePrefix={arXiv},
-  primaryClass={eess.AS},
-  url={https://arxiv.org/abs/2609.08977},
+      title={Omni Interaction Agent Technical Report}, 
+      author={Orantqing and Shengpeng Ji and Junlong Tong and Jialong Zuo and Dongjie Fu and Di Cao and Yangzhuo Li and Shangda Wu and Franz and Evan and Theron Veyra and Changhao Pan and Jingyu Lu and Dongchao Yang and Zhifei Xie and Yang Tan and Xiaoyu Shen and Xiaoda Yang and Wenfu Wang and Teddy Sun and Steve Yves and Zhou Zhao},
+      year={2026},
+      eprint={2609.08977},
+      archivePrefix={arXiv},
+      primaryClass={eess.AS},
+      url={https://arxiv.org/abs/2609.08977}, 
 }
 ```
 

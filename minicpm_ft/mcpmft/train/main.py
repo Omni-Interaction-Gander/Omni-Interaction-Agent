@@ -303,7 +303,7 @@ def validate_project_config(config) -> None:
             and not config.data.frontbrain_omni_manifest_paths
         ):
             raise ValueError(
-                "task_tools_v1 mixed training requires explicit timestamped audio-video Omni "
+                "task_tools_v1 mixed training requires explicit timestamped audio-video "
                 "sources in data.frontbrain_omni_manifest_paths unless "
                 "data.frontbrain_require_vision_source=false is selected"
             )
@@ -318,7 +318,7 @@ def validate_project_config(config) -> None:
         )
         if missing_omni_sources:
             raise ValueError(
-                "frontbrain Omni manifests must also be present in data.manifest_paths: "
+                "frontbrain multimodal manifests must also be present in data.manifest_paths: "
                 f"{missing_omni_sources}"
             )
         missing_tool_sources = sorted(
@@ -336,7 +336,7 @@ def validate_project_config(config) -> None:
         )
         if overlap:
             raise ValueError(
-                "audio-video Omni and task-tool manifest sets must be disjoint: "
+                "audio-video multimodal and task-tool manifest sets must be disjoint: "
                 f"{overlap}"
             )
         speech_sources = sorted(
@@ -347,7 +347,7 @@ def validate_project_config(config) -> None:
         if not speech_sources and not talker_only:
             raise ValueError(
                 "task_tools_v1 training requires at least one ordinary speech manifest in "
-                "addition to audio-video Omni and task-tool manifests"
+                "addition to audio-video multimodal and task-tool manifests"
             )
     elif (
         config.data.frontbrain_omni_manifest_paths

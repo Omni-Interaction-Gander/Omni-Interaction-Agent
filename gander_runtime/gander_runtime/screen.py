@@ -7,7 +7,7 @@ from typing import Any
 
 @dataclass(frozen=True, slots=True)
 class ScreenFrame:
-    """A decoded screen image ready for the Omni vision prefill."""
+    """A decoded screen image ready for visual prefill."""
 
     frame_id: str
     image: Any = field(repr=False, compare=False)
@@ -31,7 +31,7 @@ class LatestScreenFrameBuffer:
     """Capture-ordered screen buffer consumed at the MiniCPM unit clock.
 
     Producers publish independently of inference. Timestamped consumers select the newest
-    frame available at audio-unit start; continuous Omni mode may reuse the last frame.
+    frame available at audio-unit start; continuous visual mode may reuse the last frame.
     """
 
     def __init__(self, *, max_pending_frames: int = 128) -> None:
@@ -63,7 +63,7 @@ class LatestScreenFrameBuffer:
     ) -> tuple[ScreenFrame, ...]:
         """Atomically select frames for one model unit.
 
-        ``reuse_base`` implements continuous Omni mode: after the newest frame is
+        ``reuse_base`` implements continuous visual mode: after the newest frame is
         consumed, static-screen units reuse it.
         """
 
