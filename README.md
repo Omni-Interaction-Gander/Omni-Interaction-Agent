@@ -273,6 +273,66 @@ worker:
 `cwd` is the workspace available to the Brain. `codex_bin` may be a command on
 `PATH` or an absolute path, and `model: null` keeps the Codex default model.
 
+#### Using OrcaRouter as the Brain provider
+
+Gander also ships an [OrcaRouter](https://www.orcarouter.ai) provider, an
+OpenAI-compatible AI gateway built for both models and agents, with adaptive
+routing, automatic failover, zero-markup inference, observability, guardrails,
+and agent-tool governance. It also runs gateway-level, zero-trust security for
+AI agents on the same endpoint — screening every prompt/response and governing
+every tool call on a default-deny basis, with no application code changes.
+
+```yaml
+worker:
+  provider: orcarouter
+  cwd: ../workspace
+  profile: full
+  settings:
+    model: orcarouter/auto
+    api_key_env: ORCAROUTER_API_KEY
+```
+
+Two explicit credential choices are supported and remain independently usable:
+
+1. **API key** — set `ORCAROUTER_API_KEY` (or the key named by
+   `worker.settings.api_key_env`) to an `sk-orca-…` key from your
+   [OrcaRouter console](https://www.orcarouter.ai). Users with no browser or no
+   account can keep using this path.
+2. **Connect with OrcaRouter** — run `gander-orca connect` (OAuth 2.0 + PKCE,
+   Flow B out-of-band). A browser opens at `https://www.orcarouter.ai/auth`;
+   paste the shown code back. The durable `sk-orca-…` key issued by your
+   account is stored under the runtime directory (owner-only) and reused on
+   restart — it is billed to your OrcaRouter account and revocable from
+   `https://www.orcarouter.ai/console/authorized-apps`.
+
+Both entry points produce the same normal OrcaRouter API key, so model
+discovery and inference do not care which one you used. Auth and code exchange
+use `https://www.orcarouter.ai`; inference and model discovery use
+`https://api.orcarouter.ai/v1`. A shared self-hosted base is supported via
+`worker.settings.shared_base`, with explicit `auth_base`/`api_base` overrides
+taking precedence. See `gander_runtime/configs/serve.orcarouter.example.yaml`.
+
+Useful commands:
+
+```bash
+# validate credential and resolved origins
+gander-orca check
+# browse the live model catalog (chat, embedding, image, video, rerank)
+gander-orca models --capability chat
+# OAuth 2.0 + PKCE login (Flow B)
+gander-orca connect
+```
+
+Model discovery is live-first: when the OrcaRouter provider is selected, the
+model dropdown is generated from `GET https://api.orcarouter.ai/v1/models` on
+the configured inference origin, filtered by the capability of the entry point
+(text chat, multimodal chat, embedding, image generation, video, rerank). If
+the catalog is temporarily unavailable, a small verified cold-start seed
+(`openai/gpt-5.5`, `anthropic/claude-opus-4.8`, `google/gemini-3.5-flash`,
+`deepseek/deepseek-v4-pro`, `orcarouter/auto`) is shown with its context,
+input-modality, and reasoning metadata intact; the UI indicates the degraded
+state and live discovery always takes precedence.
+
 The release template already sets 8/50 token alignment, `context_slate`, full
 Brain tools, and the three-GPU mapping: GPU 0 for Thinker, GPU 1 for Talker, and
 GPU 2 for ASR.

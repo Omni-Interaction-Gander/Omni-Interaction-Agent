@@ -1,0 +1,16 @@
+worker:
+  provider: orcarouter
+  cwd: ../workspace
+  profile: full
+  settings:
+    model: orcarouter/auto
+    api_key_env: ORCAROUTER_API_KEY
+    # Optional origin overrides. Public defaults:
+    #   auth origin:  https://www.orcarouter.ai
+    #   api origin:   https://api.orcarouter.ai/v1
+    # A shared self-hosted base sets both; explicit auth_base/api_base win.
+    # shared_base: https://orcarouter.example
+    # auth_base:   https://www.orcarouter.ai
+    # api_base:    https://api.orcarouter.ai/v1
+    request_timeout_s: 120
+    catalog_timeout_s: 20
