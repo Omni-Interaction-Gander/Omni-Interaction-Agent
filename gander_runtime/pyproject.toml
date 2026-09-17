@@ -18,7 +18,13 @@ dependencies = [
 
 [project.scripts]
 gander-serve = "gander_runtime.cli:main"
+gander-orca = "gander_runtime.orcarouter.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["gander_runtime*"]
+exclude = ["gander_runtime.tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["gander_runtime/tests"]
+addopts = "-q"

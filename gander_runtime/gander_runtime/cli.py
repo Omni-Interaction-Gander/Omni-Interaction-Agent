@@ -267,6 +267,8 @@ def preflight_config(config: ReleaseConfig) -> None:
             "worker.settings.codex_bin",
             str(getattr(configured_provider.settings, "codex_bin")),
         )
+    if config.worker.provider == "orcarouter":
+        _validate_orca_settings(configured_provider.settings)
     if config.server.mode == "coordinator":
         _require_executable("coordinator.codex_bin", config.coordinator.codex_bin)
 
@@ -278,6 +280,37 @@ def preflight_config(config: ReleaseConfig) -> None:
                 "managed ASR requires faster-whisper; install minicpm_ft[asr]"
             )
     _validate_gpu_assignment(config)
+
+
+def _validate_orca_settings(settings: Any) -> None:
+    """Validate OrcaRouter provider settings that are model/runtime concerns."""
+
+    from .orcarouter.credentials import resolve_origins
+
+    auth_origin, api_origin = resolve_origins(
+        auth_base=getattr(settings, "auth_base", None),
+        api_base=getattr(settings, "api_base", None),
+        shared_base=getattr(settings, "shared_base", None),
+    )
+    if not auth_origin.startswith("https://") and not (
+        auth_origin.startswith("http://")
+        and any(
+            host in auth_origin
+            for host in ("localhost", "127.0.0.1", "[::1]")
+        )
+    ):
+        raise ValueError("OrcaRouter auth origin must use HTTPS")
+    if not api_origin.startswith("https://") and not (
+        api_origin.startswith("http://")
+        and any(
+            host in api_origin
+            for host in ("localhost", "127.0.0.1", "[::1]")
+        )
+    ):
+        raise ValueError("OrcaRouter API origin must use HTTPS")
+    model = str(getattr(settings, "model", "") or "").strip()
+    if not model:
+        raise ValueError("worker.settings.model must not be empty for OrcaRouter")
 
 
 def _require_path(label: str, value: str) -> Path:
